@@ -4,15 +4,19 @@ import axios from 'axios';
 interface AIPluginSettings {
   apiKey: string;
   apiUrl: string;
+  modelName: string;
   systemPrompt: string;
 }
 
+const DEFAULT_SETTINGS: AIPluginSettings = {
+  apiKey: "",
+  apiUrl: "https://api.openai.com/v1/chat/completions",
+  modelName: "gpt-3.5-turbo",  // 确保有默认值
+  systemPrompt: "你是一个有帮助的AI助手"
+};
+
 export default class AIPlugin extends Plugin {
-  private settings: AIPluginSettings = {
-    apiKey: "",
-    apiUrl: "https://api.siliconflow.cn/v1/chat/completions",
-    systemPrompt: "你是一个有帮助的AI助手"
-  };
+  settings: AIPluginSettings = DEFAULT_SETTINGS;
 
   async onload() {
     await this.loadSettings();
@@ -50,39 +54,35 @@ export default class AIPlugin extends Plugin {
   }
 
   private async callOpenAI(input: string): Promise<string> {
-    const messages = [];
+    const response = await this.generateResponse(input);
+    return response;
+  }
 
-    if (this.settings.systemPrompt) {
-      messages.push({
-        role: "system",
-        content: this.settings.systemPrompt
-      });
-    }
-
-    messages.push({ role: "user", content: input });
-
-    const response = await axios.post(
-      this.settings.apiUrl,
-      {
-        model: "internlm/internlm2_5-7b-chat",
-        messages: messages
+  private async generateResponse(prompt: string): Promise<string> {
+    const response = await fetch(this.settings.apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${this.settings.apiKey}`
       },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${this.settings.apiKey}`
-        }
-      }
-    );
+      body: JSON.stringify({
+        model: this.settings.modelName,
+        messages: [
+          { role: "system", content: this.settings.systemPrompt },
+          { role: "user", content: prompt }
+        ]
+      })
+    });
 
-    return response.data.choices[0].message.content;
+    const data = await response.json();
+    return data.choices[0].message.content;
   }
 
   private async loadSettings() {
     this.settings = Object.assign({}, this.settings, await this.loadData());
   }
 
-  private async saveSettings() {
+  async saveSettings() {
     await this.saveData(this.settings);
   }
 }
@@ -115,6 +115,17 @@ class AISettingsTab extends PluginSettingTab {
         .setValue(this.plugin.settings.apiUrl)
         .onChange(async (value) => {
           this.plugin.settings.apiUrl = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName("模型名称")
+      .setDesc("设置要使用的AI模型名称（如gpt-3.5-turbo, gpt-4等）")
+      .addText(text => text
+        .setPlaceholder("gpt-3.5-turbo")
+        .setValue(this.plugin.settings.modelName)
+        .onChange(async (value) => {
+          this.plugin.settings.modelName = value;
           await this.plugin.saveSettings();
         }));
 
