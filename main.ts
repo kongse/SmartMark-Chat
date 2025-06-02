@@ -16,6 +16,7 @@ const DEFAULT_SETTINGS: AIPluginSettings = {
   contextLines: 3  // 默认收集3轮对话
 };
 
+// 主插件类
 export default class AIPlugin extends Plugin {
   settings: AIPluginSettings = DEFAULT_SETTINGS;
   private streamInsertPosition: { line: number, ch: number } | null = null;
@@ -23,7 +24,7 @@ export default class AIPlugin extends Plugin {
 
   async onload() {
     await this.loadSettings();
-
+    //  按快捷键时执行
     this.addCommand({
       id: 'call-ai-api',
       name: 'Call AI API',
@@ -34,7 +35,7 @@ export default class AIPlugin extends Plugin {
           const currentLine = editor.getLine(cursor.line);
 
           if (!this.settings.apiKey) {
-            new Notice("⚠️ 请先在插件设置中填写API密钥！");
+            new Notice("⚠️ Please SETUP API Keys First！");
             return;
           }
 
@@ -43,21 +44,22 @@ export default class AIPlugin extends Plugin {
 
           // 获取格式化后的当前行内容（去掉"USER: "前缀）
           const formattedLine = editor.getLine(cursor.line);
-          const queryText = formattedLine.replace("USER: ", "");
+          const queryText = formattedLine.replace(">USER: ", "");
 
           // 只调用AI，不再手动插入回复（流式输出已经处理了）
           await this.callOpenAI(queryText);
 
           // 移动光标到文档末尾
-          editor.setCursor(editor.lastLine());
+          //editor.setCursor(editor.lastLine());
           
         } catch (error) {
-          new Notice(`调用AI API出错: ${error}`);
+          new Notice(`CALL AI API ERROR: ${error}`);
           console.error(error);
         }
       }
     });
 
+    // 添加命令用于格式化文本
     this.addCommand({
       id: 'format-text',
       name: 'Format selected text',
@@ -70,11 +72,13 @@ export default class AIPlugin extends Plugin {
     this.addSettingTab(new AISettingsTab(this.app, this));
   }
 
+  // OpenAI API调用函数
   private async callOpenAI(input: string): Promise<string> {
     const response = await this.generateResponse(input);
     return response;
   }
 
+  // 从当前行向上收集对话上下文
   private async getContextMessages(): Promise<Array<{role: string, content: string}>> {
     const editor = this.app.workspace.activeEditor?.editor;
     if (!editor) return [];
@@ -234,6 +238,7 @@ private async generateResponse(prompt: string): Promise<string> {
     return result;
 }
 
+// Flowing Content Updater
 private updateStreamingContent(newContent: string) {
     const editor = this.app.workspace.activeEditor?.editor;
     if (!editor) return;
@@ -258,6 +263,7 @@ private updateStreamingContent(newContent: string) {
     this.lastContentLength += newContent.length;
 }
 
+// 在流式输出结束后添加LLM标记
 private finalizeStreamingContent() {
     const editor = this.app.workspace.activeEditor?.editor;
     if (!editor || !this.streamInsertPosition) return;
@@ -270,6 +276,7 @@ private finalizeStreamingContent() {
     editor.replaceRange("\nLLM", endPos);
 }
 
+// 加载设置
 private async loadSettings() {
     this.settings = Object.assign({}, this.settings, await this.loadData());
   }
@@ -278,6 +285,7 @@ private async loadSettings() {
     await this.saveData(this.settings);
   }
 
+  // 格式化用户输入行
   private async formatSelectedText(editor: Editor): Promise<{ line: number, ch: number }> {
     const cursor = editor.getCursor();
     const baseLine = cursor.line; // 统一使用执行时光标所在行作为基础行号
@@ -299,6 +307,7 @@ private async loadSettings() {
     };
 }
 
+// 发送文本到AI
 async sendToAI() {
   const editor = this.app.workspace.activeEditor?.editor;
   if (!editor) return;
@@ -324,6 +333,7 @@ async sendToAI() {
 }
 }
 
+// 设置 AI 选项卡
 class AISettingsTab extends PluginSettingTab {
     // 显式声明私有属性
     private plugin: AIPlugin;
