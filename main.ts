@@ -113,7 +113,7 @@ export default class AIPlugin extends Plugin {
                 aiResponse = "";
             }
             isCollectingAIResponse = true;
-            aiResponse = '\n\n' + line.split('AI:')[1] + '\n';
+            aiResponse = line.split('AI:')[1] + '\n';
         } else if (line.includes('LLM')) {
             // 遇到LLM标记结束当前AI回复的收集
             if (isCollectingAIResponse) {
@@ -233,7 +233,7 @@ private updateStreamingContent(newContent: string) {
         const cursor = editor.getCursor();
         this.streamInsertPosition = { line: cursor.line + 2, ch: 0 };
         // 先插入AI标记
-        editor.replaceRange("\nAI: ", this.streamInsertPosition);
+        editor.replaceRange("\n\nAI: ", this.streamInsertPosition);
         this.streamInsertPosition.ch = 4; // "AI: "的长度
     }
     
