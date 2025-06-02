@@ -225,10 +225,18 @@ async sendToAI() {
 }
 
 class AISettingsTab extends PluginSettingTab {
+    // 显式声明私有属性
+    private plugin: AIPlugin;
+
+    constructor(app: App, plugin: AIPlugin) {
+        super(app, plugin);
+        this.plugin = plugin; // 必须赋值
+    }
+
     display(): void {
         const { containerEl } = this;
         containerEl.empty();
-    
+
         new Setting(containerEl)
             .setName("API密钥")
             .setDesc("输入OpenAI或兼容API的密钥")
