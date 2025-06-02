@@ -166,15 +166,80 @@ private async generateResponse(prompt: string): Promise<string> {
         },
         body: JSON.stringify({
             model: this.settings.modelName,
-            messages: fullMessages
+            messages: fullMessages,
+            stream: true  // 启用流式传输
         })
     });
 
-    const data = await response.json();
-    return data.choices[0].message.content;
+    if (!response.body) {
+        throw new Error('Response body is null');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let result = '';
+
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const data = line.slice(6);
+                    if (data === '[DONE]') {
+                        return result;
+                    }
+
+                    try {
+                        const parsed = JSON.parse(data);
+                        const content = parsed.choices?.[0]?.delta?.content;
+                        if (content) {
+                            result += content;
+                            // 这里可以实时更新编辑器内容
+                            this.updateStreamingContent(result);
+                        }
+                    } catch (e) {
+                        // 忽略解析错误
+                    }
+                }
+            }
+        }
+    } finally {
+        reader.releaseLock();
+    }
+
+    return result;
 }
 
-  private async loadSettings() {
+private updateStreamingContent(content: string) {
+    const editor = this.app.workspace.activeEditor?.editor;
+    if (!editor) return;
+    
+    // 获取当前光标位置
+    const cursor = editor.getCursor();
+    
+    // 清除之前的AI回复内容并插入新内容
+    // 这里需要根据具体需求调整更新逻辑
+    const insertPos = { line: cursor.line + 2, ch: 0 };
+    
+    // 清除从插入位置到文档末尾的内容
+    const lastLine = editor.lastLine();
+    editor.replaceRange('', insertPos, { line: lastLine, ch: editor.getLine(lastLine).length });
+    
+    // 插入新的流式内容
+    editor.replaceRange(`\n${content}\n`, insertPos);
+}
+
+// Remove these orphaned lines:
+// const data = await response.json();
+// return data.choices[0].message.content;
+// }
+
+private async loadSettings() {
     this.settings = Object.assign({}, this.settings, await this.loadData());
   }
 
