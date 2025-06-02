@@ -103,32 +103,42 @@ export default class AIPlugin extends Plugin {
                 role: 'user',
                 content: line.replace('>USER: ', '')
             });
-        } else if (line.includes('AI:')) {
-            // 遇到AI:开始收集回复
-            if (isCollectingAIResponse && aiResponse) {
-                messages.unshift({
-                    role: 'assistant',
-                    content: aiResponse.trim()
-                });
+        } else if (line.includes('LLM')) {
+            // 遇到LLM标记，开始收集AI回复（因为是向上遍历）
+            if (!isCollectingAIResponse) {
+                isCollectingAIResponse = true;
                 aiResponse = "";
             }
-            isCollectingAIResponse = true;
-            aiResponse = line.split('AI:')[1] + '\n';
-        } else if (line.includes('LLM')) {
-            // 遇到LLM标记结束当前AI回复的收集
+        } else if (line.includes('AI:')) {
+            // 遇到AI:结束当前AI回复的收集
             if (isCollectingAIResponse) {
-                isCollectingAIResponse = false;
+                // 获取AI:后面的内容
+                const aiContent = line.split('AI:')[1];
+                if (aiContent && aiContent.trim()) {
+                    if (aiResponse) {
+                        aiResponse = aiContent.trim() + '\n' + aiResponse;
+                    } else {
+                        aiResponse = aiContent.trim();
+                    }
+                }
+                
+                // 保存收集到的AI回复
                 if (aiResponse) {
                     messages.unshift({
                         role: 'assistant',
                         content: aiResponse.trim()
                     });
-                    aiResponse = "";
                 }
+                aiResponse = "";
+                isCollectingAIResponse = false;
             }
-        } else if (isCollectingAIResponse) {
-            // 如果正在收集AI回复，将当前行添加到回复内容中
-            aiResponse = line + '\n' + aiResponse;
+        } else if (isCollectingAIResponse && line.trim()) {
+            // 如果正在收集AI回复，将当前行添加到回复内容前面（因为是向上遍历）
+            if (aiResponse) {
+                aiResponse = line + '\n' + aiResponse;
+            } else {
+                aiResponse = line;
+            }
         }
     }
     
