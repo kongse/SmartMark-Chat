@@ -75,31 +75,7 @@ export default class AIPlugin extends Plugin {
     return response;
   }
 
-  private async generateResponse(prompt: string): Promise<string> {
-    // 获取上下文对话
-    const messages = await this.getContextMessages();
-    
-    const response = await fetch(this.settings.apiUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${this.settings.apiKey}`
-      },
-      body: JSON.stringify({
-        model: this.settings.modelName,
-        messages: [
-          { role: "system", content: this.settings.systemPrompt },
-          ...messages, // 添加历史对话消息
-          { role: "user", content: prompt }
-        ]
-      })
-    });
-
-    const data = await response.json();
-    return data.choices[0].message.content;
-}
-
-private async getContextMessages(): Promise<Array<{role: string, content: string}>> {
+  private async getContextMessages(): Promise<Array<{role: string, content: string}>> {
     const editor = this.app.workspace.activeEditor?.editor;
     if (!editor) return [];
     
@@ -165,6 +141,37 @@ private async getContextMessages(): Promise<Array<{role: string, content: string
     }
     
     return messages;
+}
+
+private async generateResponse(prompt: string): Promise<string> {
+    // 获取上下文对话
+    const messages = await this.getContextMessages();
+    
+    // 构建完整的消息数组
+    const fullMessages = [
+        { role: "system", content: this.settings.systemPrompt },
+        ...messages,
+        { role: "user", content: prompt }
+    ];
+    
+    // 将消息转换为JSON字符串并复制到剪贴板
+    await navigator.clipboard.writeText(JSON.stringify(fullMessages, null, 2));
+    new Notice("已将对话上下文复制到剪贴板");
+    
+    const response = await fetch(this.settings.apiUrl, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${this.settings.apiKey}`
+        },
+        body: JSON.stringify({
+            model: this.settings.modelName,
+            messages: fullMessages
+        })
+    });
+
+    const data = await response.json();
+    return data.choices[0].message.content;
 }
 
   private async loadSettings() {
