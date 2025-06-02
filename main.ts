@@ -1,5 +1,4 @@
 import { Plugin, Editor, Notice, App, PluginSettingTab, Setting } from 'obsidian';
-import axios from 'axios';
 
 interface AIPluginSettings {
   apiKey: string;
@@ -35,18 +34,34 @@ export default class AIPlugin extends Plugin {
             return;
           }
 
-          const aiResponse = await this.callOpenAI(currentLine);
+          // 先格式化文本
+          this.formatSelectedText(editor);
+
+          // 获取格式化后的当前行内容（去掉"USER: "前缀）
+          const formattedLine = editor.getLine(cursor.line);
+          const queryText = formattedLine.replace("USER: ", "");
+
+          const aiResponse = await this.callOpenAI(queryText);
 
           // 在下一行插入回复
           editor.replaceRange(
-            `\n${aiResponse}\n\n`,
-            { line: cursor.line + 1, ch: 0 }
+            //`\nAI: ${aiResponse}\n`,
+            `\n${aiResponse}\n`,
+            { line: cursor.line + 2, ch: 0 }
           );
         } catch (error) {
-          new Notice(`❌ API调用失败: ${error.message}`);
+          new Notice(`调用AI API出错: ${error}`);
           console.error(error);
         }
-      },
+      }
+    });
+
+    this.addCommand({
+      id: 'format-text',
+      name: 'Format selected text',
+      editorCallback: (editor: Editor) => {
+        this.formatSelectedText(editor);
+      }
     });
 
     // 添加设置选项卡（用于配置API密钥）
@@ -85,9 +100,62 @@ export default class AIPlugin extends Plugin {
   async saveSettings() {
     await this.saveData(this.settings);
   }
+
+  private async formatSelectedText(editor: Editor): Promise<{ line: number, ch: number }> {
+    const cursor = editor.getCursor();
+    const baseLine = cursor.line; // 统一使用执行时光标所在行作为基础行号
+    const originalText = editor.getLine(baseLine);
+
+    // 1. 在基础行插入代码块开始标记
+    editor.replaceRange(">USER: ", { line: baseLine, ch: 0 });
+    
+    // 2. 在下一行添加USER:前缀
+    //editor.setLine(baseLine, `USER: ${originalText}`);
+    
+    // 3. 在再下一行插入代码块结束标记
+    // editor.replaceRange("\n```", { line: baseLine, ch: 0 });
+    
+    // 4. 返回结束位置（代码块结束标记的下一行开头）
+    return { 
+        line: baseLine + 3, // 基础行 + 3行
+        ch: 0
+    };
+}
+
+async sendToAI() {
+  const editor = this.app.workspace.activeEditor?.editor;
+  if (!editor) return;
+
+  // 获取当前光标位置作为基础行号
+  const baseLine = editor.getCursor().line;
+  const query = editor.getSelection() || editor.getLine(baseLine); // 优先使用选中文本，没有则用整行
+
+  // 格式化文本并获取插入位置
+  const insertPos = await this.formatSelectedText(editor);
+  
+  try {
+      // 获取AI回复
+      const aiResponse = await this.callOpenAI(query);
+      
+      // 在计算好的位置插入AI回复
+      editor.replaceRange(`${aiResponse}\n`, insertPos);
+      
+      // 移动光标到AI回复的末尾
+      editor.setCursor(editor.lastLine());
+      
+  } catch (error) {
+      console.error("AI调用失败:", error);
+      editor.replaceRange("\n[AI请求失败]\n", insertPos);
+  }
+}
 }
 
 class AISettingsTab extends PluginSettingTab {
+  /**
+   * Creates a new instance of the class.
+   * @param app - The Obsidian App instance
+   * @param plugin - Reference to the parent AI plugin instance
+   */
   constructor(app: App, private plugin: AIPlugin) {
     super(app, plugin);
   }
