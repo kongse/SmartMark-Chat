@@ -18,6 +18,8 @@ const DEFAULT_SETTINGS: AIPluginSettings = {
 
 export default class AIPlugin extends Plugin {
   settings: AIPluginSettings = DEFAULT_SETTINGS;
+  private streamInsertPosition: { line: number, ch: number } | null = null;
+  private lastContentLength = 0;
 
   async onload() {
     await this.loadSettings();
@@ -43,14 +45,12 @@ export default class AIPlugin extends Plugin {
           const formattedLine = editor.getLine(cursor.line);
           const queryText = formattedLine.replace("USER: ", "");
 
-          const aiResponse = await this.callOpenAI(queryText);
+          // 只调用AI，不再手动插入回复（流式输出已经处理了）
+          await this.callOpenAI(queryText);
 
-          // 在下一行插入回复
-          editor.replaceRange(
-            //`\nAI: ${aiResponse}\n`,
-            `\n${aiResponse}\n`,
-            { line: cursor.line + 2, ch: 0 }
-          );
+          // 移动光标到文档末尾
+          editor.setCursor(editor.lastLine());
+          
         } catch (error) {
           new Notice(`调用AI API出错: ${error}`);
           console.error(error);
@@ -113,7 +113,7 @@ export default class AIPlugin extends Plugin {
                 aiResponse = "";
             }
             isCollectingAIResponse = true;
-            aiResponse = line.split('AI:')[1] + '\n';
+            aiResponse = '\n\n' + line.split('AI:')[1] + '\n';
         } else if (line.includes('LLM')) {
             // 遇到LLM标记结束当前AI回复的收集
             if (isCollectingAIResponse) {
@@ -144,6 +144,10 @@ export default class AIPlugin extends Plugin {
 }
 
 private async generateResponse(prompt: string): Promise<string> {
+    // 重置流式输出状态
+    this.streamInsertPosition = null;
+    this.lastContentLength = 0;
+    
     // 获取上下文对话
     const messages = await this.getContextMessages();
     
@@ -182,7 +186,11 @@ private async generateResponse(prompt: string): Promise<string> {
     try {
         while (true) {
             const { done, value } = await reader.read();
-            if (done) break;
+            if (done) {
+                // 流式输出结束，添加LLM标记
+                this.finalizeStreamingContent();
+                break;
+            }
 
             const chunk = decoder.decode(value);
             const lines = chunk.split('\n');
@@ -191,6 +199,7 @@ private async generateResponse(prompt: string): Promise<string> {
                 if (line.startsWith('data: ')) {
                     const data = line.slice(6);
                     if (data === '[DONE]') {
+                        this.finalizeStreamingContent();
                         return result;
                     }
 
@@ -199,8 +208,8 @@ private async generateResponse(prompt: string): Promise<string> {
                         const content = parsed.choices?.[0]?.delta?.content;
                         if (content) {
                             result += content;
-                            // 这里可以实时更新编辑器内容
-                            this.updateStreamingContent(result);
+                            // 增量更新编辑器内容
+                            this.updateStreamingContent(content);
                         }
                     } catch (e) {
                         // 忽略解析错误
@@ -215,29 +224,41 @@ private async generateResponse(prompt: string): Promise<string> {
     return result;
 }
 
-private updateStreamingContent(content: string) {
+private updateStreamingContent(newContent: string) {
     const editor = this.app.workspace.activeEditor?.editor;
     if (!editor) return;
     
-    // 获取当前光标位置
-    const cursor = editor.getCursor();
+    // 如果还没有设置插入位置，初始化插入位置
+    if (!this.streamInsertPosition) {
+        const cursor = editor.getCursor();
+        this.streamInsertPosition = { line: cursor.line + 2, ch: 0 };
+        // 先插入AI标记
+        editor.replaceRange("\nAI: ", this.streamInsertPosition);
+        this.streamInsertPosition.ch = 4; // "AI: "的长度
+    }
     
-    // 清除之前的AI回复内容并插入新内容
-    // 这里需要根据具体需求调整更新逻辑
-    const insertPos = { line: cursor.line + 2, ch: 0 };
+    // 计算当前应该插入的位置
+    const currentPos = {
+        line: this.streamInsertPosition.line,
+        ch: this.streamInsertPosition.ch + this.lastContentLength
+    };
     
-    // 清除从插入位置到文档末尾的内容
-    const lastLine = editor.lastLine();
-    editor.replaceRange('', insertPos, { line: lastLine, ch: editor.getLine(lastLine).length });
-    
-    // 插入新的流式内容
-    editor.replaceRange(`\n${content}\n`, insertPos);
+    // 只插入新增的内容
+    editor.replaceRange(newContent, currentPos);
+    this.lastContentLength += newContent.length;
 }
 
-// Remove these orphaned lines:
-// const data = await response.json();
-// return data.choices[0].message.content;
-// }
+private finalizeStreamingContent() {
+    const editor = this.app.workspace.activeEditor?.editor;
+    if (!editor || !this.streamInsertPosition) return;
+    
+    // 在内容末尾添加LLM标记
+    const endPos = {
+        line: this.streamInsertPosition.line,
+        ch: this.streamInsertPosition.ch + this.lastContentLength
+    };
+    editor.replaceRange("\nLLM", endPos);
+}
 
 private async loadSettings() {
     this.settings = Object.assign({}, this.settings, await this.loadData());
@@ -280,11 +301,8 @@ async sendToAI() {
   const insertPos = await this.formatSelectedText(editor);
   
   try {
-      // 获取AI回复
-      const aiResponse = await this.callOpenAI(query);
-      
-      // 在计算好的位置插入AI回复
-      editor.replaceRange(`${aiResponse}\n`, insertPos);
+      // 获取AI回复 - 流式输出已经在generateResponse中处理了
+      await this.callOpenAI(query);
       
       // 移动光标到AI回复的末尾
       editor.setCursor(editor.lastLine());
