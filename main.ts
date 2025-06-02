@@ -280,13 +280,21 @@ class AISettingsTab extends PluginSettingTab {
         new Setting(containerEl)
             .setName("系统提示词")
             .setDesc("设置AI的系统角色和初始指令")
-            .addTextArea(text => text
-                .setPlaceholder("你是一个有帮助的AI助手")
-                .setValue(this.plugin.settings.systemPrompt)
-                .onChange(async (value) => {
-                    this.plugin.settings.systemPrompt = value;
-                    await this.plugin.saveSettings();
-                }));
+            .addTextArea(text => {
+                text.setPlaceholder("你是一个有帮助的AI助手")
+                    .setValue(this.plugin.settings.systemPrompt)
+                    .onChange(async (value) => {
+                        this.plugin.settings.systemPrompt = value;
+                        await this.plugin.saveSettings();
+                    });
+                
+                // 设置文本区域的大小
+                text.inputEl.rows = 8;  // 设置行数为8行
+                text.inputEl.cols = 50; // 设置列数为50列
+                text.inputEl.style.width = '100%';  // 设置宽度为100%
+                text.inputEl.style.minHeight = '120px';  // 设置最小高度
+                text.inputEl.style.resize = 'vertical';  // 允许垂直调整大小
+            });
     
         new Setting(containerEl)
             .setName("上下文对话轮数")
