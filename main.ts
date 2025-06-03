@@ -44,7 +44,7 @@ export default class AIPlugin extends Plugin {
 
           // 获取格式化后的当前行内容（去掉"USER: "前缀）
           const formattedLine = editor.getLine(cursor.line);
-          const queryText = formattedLine.replace(">USER: ", "");
+          const queryText = formattedLine.replace(">>", "");
 
           // 只调用AI，不再手动插入回复（流式输出已经处理了）
           await this.callOpenAI(queryText);
@@ -68,7 +68,7 @@ export default class AIPlugin extends Plugin {
       }
     });
 
-    // 添加设置选项卡（用于配置API密钥）
+    // 添加设置选项卡 (用于配置AI参数等)
     this.addSettingTab(new AISettingsTab(this.app, this));
   }
 
@@ -92,7 +92,7 @@ export default class AIPlugin extends Plugin {
     for (let i = currentLine - 1; i >= 0 && messages.length < this.settings.contextLines * 2; i--) {
         const line = editor.getLine(i).trim();
         
-        if (line.startsWith('>USER: ')) {
+        if (line.startsWith('>>')) {
             // 如果之前在收集AI回复，先保存收集到的内容
             if (isCollectingAIResponse && aiResponse) {
                 messages.unshift({
@@ -105,19 +105,19 @@ export default class AIPlugin extends Plugin {
             
             messages.unshift({
                 role: 'user',
-                content: line.replace('>USER: ', '')
+                content: line.replace('>>', '')
             });
-        } else if (line.includes('LLM')) {
-            // 遇到LLM标记，开始收集AI回复（因为是向上遍历）
+        } else if (line.includes('<<')) {
+            // 遇到<<标记，开始收集AI回复（因为是向上遍历）
             if (!isCollectingAIResponse) {
                 isCollectingAIResponse = true;
                 aiResponse = "";
             }
-        } else if (line.includes('AI:')) {
-            // 遇到AI:结束当前AI回复的收集
+        } else if (line.includes('-----')) {
+            // 遇到-----结束当前AI回复的收集
             if (isCollectingAIResponse) {
-                // 获取AI:后面的内容
-                const aiContent = line.split('AI:')[1];
+                // 获取-----后面的内容
+                const aiContent = line.split('-----')[1];
                 if (aiContent && aiContent.trim()) {
                     if (aiResponse) {
                         aiResponse = aiContent.trim() + '\n' + aiResponse;
@@ -201,7 +201,7 @@ private async generateResponse(prompt: string): Promise<string> {
         while (true) {
             const { done, value } = await reader.read();
             if (done) {
-                // 流式输出结束，添加LLM标记
+                // 流式输出结束，添加<<标记
                 this.finalizeStreamingContent();
                 break;
             }
@@ -246,10 +246,23 @@ private updateStreamingContent(newContent: string) {
     // 如果还没有设置插入位置，初始化插入位置
     if (!this.streamInsertPosition) {
         const cursor = editor.getCursor();
-        this.streamInsertPosition = { line: cursor.line + 2, ch: 0 };
-        // 先插入AI标记
-        editor.replaceRange("\n\nAI: ", this.streamInsertPosition);
-        this.streamInsertPosition.ch = 4; // "AI: "的长度
+        // 确保插入位置不会超出文档边界
+        const doc = editor.getDoc();
+        const lastLine = doc.lastLine();
+        const lastLineLength = doc.getLine(lastLine).length;
+        
+        // 如果光标在最后一行，先添加换行符
+        if (cursor.line >= lastLine) {
+            const endPos = { line: lastLine, ch: lastLineLength };
+            editor.replaceRange("\n", endPos);
+            this.streamInsertPosition = { line: lastLine + 1, ch: 0 };
+        } else {
+            this.streamInsertPosition = { line: cursor.line + 1, ch: 0 };
+        }
+        
+        // 插入AI标记
+        editor.replaceRange("-----\n", this.streamInsertPosition);
+        this.streamInsertPosition.ch = 6; // "-----\n"的长度
     }
     
     // 计算当前应该插入的位置
@@ -263,17 +276,17 @@ private updateStreamingContent(newContent: string) {
     this.lastContentLength += newContent.length;
 }
 
-// 在流式输出结束后添加LLM标记
+// 在流式输出结束后添加<<标记
 private finalizeStreamingContent() {
     const editor = this.app.workspace.activeEditor?.editor;
     if (!editor || !this.streamInsertPosition) return;
     
-    // 在内容末尾添加LLM标记
+    // 在内容末尾添加<<标记
     const endPos = {
         line: this.streamInsertPosition.line,
         ch: this.streamInsertPosition.ch + this.lastContentLength
     };
-    editor.replaceRange("\nLLM", endPos);
+    editor.replaceRange("\n<<\n\n", endPos);
 }
 
 // 加载设置
@@ -292,7 +305,7 @@ private async loadSettings() {
     const originalText = editor.getLine(baseLine);
 
     // 1. 在基础行插入代码块开始标记
-    editor.replaceRange(">USER: ", { line: baseLine, ch: 0 });
+    editor.replaceRange(">>", { line: baseLine, ch: 0 });
     
     // 2. 在下一行添加USER:前缀
     //editor.setLine(baseLine, `USER: ${originalText}`);
