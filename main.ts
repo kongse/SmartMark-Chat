@@ -281,12 +281,24 @@ private finalizeStreamingContent() {
     const editor = this.app.workspace.activeEditor?.editor;
     if (!editor || !this.streamInsertPosition) return;
     
-    // 在内容末尾添加<<标记
+    // 生成时间戳
+    const now = new Date();
+    const timestamp = now.toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    }).replace(/\//g, '/').replace(/,/g, '');
+    
+    // 在内容末尾添加<<标记和时间戳
     const endPos = {
         line: this.streamInsertPosition.line,
         ch: this.streamInsertPosition.ch + this.lastContentLength
     };
-    editor.replaceRange("\n<<\n\n", endPos);
+    editor.replaceRange(`\n<<  [Timestamp: ${timestamp}]\n\n`, endPos);
 }
 
 // 加载设置
