@@ -113,7 +113,7 @@ export default class AIPlugin extends Plugin {
                 isCollectingAIResponse = true;
                 aiResponse = "";
             }
-        } else if (line.includes('-----')) {
+        } else if (line.includes('-----') && !line.includes('|')) {
             // 遇到-----结束当前AI回复的收集
             if (isCollectingAIResponse) {
                 // 获取-----后面的内容
