@@ -86,58 +86,40 @@ export default class AIPlugin extends Plugin {
     const currentLine = editor.getCursor().line;
     const messages: Array<{role: string, content: string}> = [];
     let aiResponse = "";
-    let isCollectingAIResponse = false;
+    let isCollectingContent = true; // 从一开始就收集内容
     
     // 从当前行向上遍历
     for (let i = currentLine - 1; i >= 0 && messages.length < this.settings.contextLines * 2; i--) {
         const line = editor.getLine(i).trim();
         
-        if (line.startsWith('>>')) {
-            // 如果之前在收集AI回复，先保存收集到的内容
-            if (isCollectingAIResponse && aiResponse) {
+        // 遇到任何分隔符时，先保存之前收集的内容作为AI回复
+        if (line.startsWith('>>') || line.includes('<<') || (line.includes('-----') && !line.includes('|'))) {
+            // 如果有收集到的内容，保存为AI回复
+            if (aiResponse.trim()) {
                 messages.unshift({
                     role: 'assistant',
                     content: aiResponse.trim()
                 });
                 aiResponse = "";
-                isCollectingAIResponse = false;
             }
             
-            messages.unshift({
-                role: 'user',
-                content: line.replace('>>', '')
-            });
-        } else if (line.includes('<<')) {
-            // 遇到<<标记，开始收集AI回复（因为是向上遍历）
-            if (!isCollectingAIResponse) {
-                isCollectingAIResponse = true;
-                aiResponse = "";
-            }
-        } else if (line.includes('-----') && !line.includes('|')) {
-            // 遇到-----结束当前AI回复的收集
-            if (isCollectingAIResponse) {
-                // 获取-----后面的内容
+            // 处理具体的分隔符
+            if (line.startsWith('>>')) {
+                // 用户问题
+                messages.unshift({
+                    role: 'user',
+                    content: line.replace('>>', '')
+                });
+            } else if (line.includes('-----') && !line.includes('|')) {
+                // AI回复结束标记，获取-----后面的内容
                 const aiContent = line.split('-----')[1];
                 if (aiContent && aiContent.trim()) {
-                    if (aiResponse) {
-                        aiResponse = aiContent.trim() + '\n' + aiResponse;
-                    } else {
-                        aiResponse = aiContent.trim();
-                    }
+                    aiResponse = aiContent.trim();
                 }
-                
-                // 保存收集到的AI回复
-                if (aiResponse) {
-                    messages.unshift({
-                        role: 'assistant',
-                        content: aiResponse.trim()
-                    });
-                }
-                aiResponse = "";
-                isCollectingAIResponse = false;
             }
-        } else if (isCollectingAIResponse && line.trim()) {
-            // 如果正在收集AI回复，将当前行添加到回复内容前面（因为是向上遍历）
+            // 对于<<标记，不需要特殊处理，只是触发保存
+        } else if (line.trim()) {
+            // 收集非空行内容（因为是向上遍历，新内容添加到前面）
             if (aiResponse) {
                 aiResponse = line + '\n' + aiResponse;
             } else {
@@ -146,8 +128,8 @@ export default class AIPlugin extends Plugin {
         }
     }
     
-    // 处理最后一个可能未处理的AI回复
-    if (isCollectingAIResponse && aiResponse) {
+    // 处理最后可能未保存的内容
+    if (aiResponse.trim()) {
         messages.unshift({
             role: 'assistant',
             content: aiResponse.trim()
