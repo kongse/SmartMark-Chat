@@ -85,54 +85,82 @@ export default class AIPlugin extends Plugin {
     
     const currentLine = editor.getCursor().line;
     const messages: Array<{role: string, content: string}> = [];
-    let aiResponse = "";
-    let isCollectingContent = true; // 从一开始就收集内容
+    let collectingContent = "";
+    let collectingMode: 'user' | 'assistant' | 'none' = 'none';
     
     // 从当前行向上遍历
     for (let i = currentLine - 1; i >= 0 && messages.length < this.settings.contextLines * 2; i--) {
-        const line = editor.getLine(i).trim();
+        const line = editor.getLine(i);
+        const trimmedLine = line.trim();
         
-        // 遇到任何分隔符时，先保存之前收集的内容作为AI回复
-        if (line.startsWith('>>') || line.includes('<<') || (line.includes('-----') && !line.includes('|'))) {
-            // 如果有收集到的内容，保存为AI回复
-            if (aiResponse.trim()) {
+        // 检查终止条件：遇到<>开头的行
+        if (trimmedLine.startsWith('<>')) {
+            // 终止收集循环
+            break;
+        }
+        
+        // 检查是否是新的收集开始标记
+        if (line.startsWith('>>')) {
+            // 保存之前收集的内容（如果有）
+            if (collectingContent.trim() && collectingMode !== 'none') {
                 messages.unshift({
-                    role: 'assistant',
-                    content: aiResponse.trim()
+                    role: collectingMode === 'user' ? 'user' : 'assistant',
+                    content: collectingContent.trim()
                 });
-                aiResponse = "";
             }
             
-            // 处理具体的分隔符
-            if (line.startsWith('>>')) {
-                // 用户问题
+            // 直接收集>>这一行作为用户输入
+            const userContent = line.substring(2); // 去掉>>
+            messages.unshift({
+                role: 'user',
+                content: userContent
+            });
+            
+            // 重启收集循环
+            collectingContent = "";
+            collectingMode = 'none';
+        }
+        else if (line.startsWith('<<')) {
+            // 保存之前收集的内容（如果有）
+            if (collectingContent.trim() && collectingMode !== 'none') {
                 messages.unshift({
-                    role: 'user',
-                    content: line.replace('>>', '')
+                    role: collectingMode === 'user' ? 'user' : 'assistant',
+                    content: collectingContent.trim()
                 });
-            } else if (line.startsWith('-----') && !line.includes('|')) {
-                // AI回复结束标记，获取-----后面的内容
-                const aiContent = line.split('-----')[1];
-                if (aiContent && aiContent.trim()) {
-                    aiResponse = aiContent.trim();
-                }
             }
-            // 对于<<标记，不需要特殊处理，只是触发保存
-        } else if (line.trim()) {
-            // 收集非空行内容（因为是向上遍历，新内容添加到前面）
-            if (aiResponse) {
-                aiResponse = line + '\n' + aiResponse;
+            
+            // 开始收集AI回答，不收集<<本行
+            collectingContent = "";
+            collectingMode = 'assistant';
+        }
+        else if (line.startsWith('-----')) {
+            // AI回答结束标记，不收集-----本行
+            if (collectingMode === 'assistant' && collectingContent.trim()) {
+                messages.unshift({
+                    role: 'assistant',
+                    content: collectingContent.trim()
+                });
+            }
+            
+            // 重启收集循环
+            collectingContent = "";
+            collectingMode = 'none';
+        }
+        else if (collectingMode !== 'none') {
+            // 在收集模式下，收集当前行内容
+            if (collectingContent) {
+                collectingContent = line + '\n' + collectingContent;
             } else {
-                aiResponse = line;
+                collectingContent = line;
             }
         }
     }
     
-    // 处理最后可能未保存的内容
-    if (aiResponse.trim()) {
+    // 处理遍历结束时可能未保存的内容
+    if (collectingContent.trim() && collectingMode !== 'none') {
         messages.unshift({
-            role: 'assistant',
-            content: aiResponse.trim()
+            role: collectingMode === 'user' ? 'user' : 'assistant',
+            content: collectingContent.trim()
         });
     }
     
