@@ -28,7 +28,7 @@ export default class AIPlugin extends Plugin {
     this.addCommand({
       id: 'call-ai-api',
       name: 'Call AI API',
-      hotkeys: [{ modifiers: ["Ctrl", "Alt"], key: "A" }],
+      hotkeys: [{ modifiers: ["Ctrl"], key: "Enter" }],
       editorCallback: async (editor: Editor) => {
         try {
           const cursor = editor.getCursor();
@@ -110,7 +110,7 @@ export default class AIPlugin extends Plugin {
                     role: 'user',
                     content: line.replace('>>', '')
                 });
-            } else if (line.includes('-----') && !line.includes('|')) {
+            } else if (line.startsWith('-----') && !line.includes('|')) {
                 // AI回复结束标记，获取-----后面的内容
                 const aiContent = line.split('-----')[1];
                 if (aiContent && aiContent.trim()) {
