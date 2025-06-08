@@ -80,92 +80,99 @@ export default class AIPlugin extends Plugin {
 
   // 从当前行向上收集对话上下文
   private async getContextMessages(): Promise<Array<{role: string, content: string}>> {
-    const editor = this.app.workspace.activeEditor?.editor;
-    if (!editor) return [];
-    
-    const currentLine = editor.getCursor().line;
-    const messages: Array<{role: string, content: string}> = [];
-    let collectingContent = "";
-    let collectingMode: 'user' | 'assistant' | 'none' = 'none';
-    
-    // 从当前行向上遍历
-    for (let i = currentLine - 1; i >= 0 && messages.length < this.settings.contextLines * 2; i--) {
-        const line = editor.getLine(i);
-        const trimmedLine = line.trim();
-        
-        // 检查终止条件：遇到<>开头的行
-        if (trimmedLine.startsWith('<>')) {
-            // 终止收集循环
-            break;
-        }
-        
-        // 检查是否是新的收集开始标记
-        if (line.startsWith('>>')) {
-            // 保存之前收集的内容（如果有）
-            if (collectingContent.trim() && collectingMode !== 'none') {
-                messages.unshift({
-                    role: collectingMode === 'user' ? 'user' : 'assistant',
-                    content: collectingContent.trim()
-                });
-            }
-            
-            // 直接收集>>这一行作为用户输入
-            const userContent = line.substring(2); // 去掉>>
-            messages.unshift({
-                role: 'user',
-                content: userContent
-            });
-            
-            // 重启收集循环
-            collectingContent = "";
-            collectingMode = 'none';
-        }
-        else if (line.startsWith('<<')) {
-            // 保存之前收集的内容（如果有）
-            if (collectingContent.trim() && collectingMode !== 'none') {
-                messages.unshift({
-                    role: collectingMode === 'user' ? 'user' : 'assistant',
-                    content: collectingContent.trim()
-                });
-            }
-            
-            // 开始收集AI回答，不收集<<本行
-            collectingContent = "";
-            collectingMode = 'assistant';
-        }
-        else if (line.startsWith('-----')) {
-            // AI回答结束标记，不收集-----本行
-            if (collectingMode === 'assistant' && collectingContent.trim()) {
-                messages.unshift({
-                    role: 'assistant',
-                    content: collectingContent.trim()
-                });
-            }
-            
-            // 重启收集循环
-            collectingContent = "";
-            collectingMode = 'none';
-        }
-        else if (collectingMode !== 'none') {
-            // 在收集模式下，收集当前行内容
-            if (collectingContent) {
-                collectingContent = line + '\n' + collectingContent;
-            } else {
-                collectingContent = line;
-            }
-        }
-    }
-    
-    // 处理遍历结束时可能未保存的内容
-    if (collectingContent.trim() && collectingMode !== 'none') {
-        messages.unshift({
-            role: collectingMode === 'user' ? 'user' : 'assistant',
-            content: collectingContent.trim()
-        });
-    }
-    
-    return messages;
-}
+      const editor = this.app.workspace.activeEditor?.editor;
+      if (!editor) return [];
+      
+      const currentLine = editor.getCursor().line;
+      const messages: Array<{role: string, content: string}> = [];
+      let collectingContent = "";
+      let collectingMode: 'user' | 'assistant' | 'none' = 'none';
+      
+      // 从当前行向上遍历
+      for (let i = currentLine - 1; i >= 0 && messages.length < this.settings.contextLines * 2; i--) {
+          const line = editor.getLine(i);
+          const trimmedLine = line.trim();
+          
+          // 检查终止条件：遇到<>开头的行
+          if (trimmedLine.startsWith('<>')) {
+              // 终止收集循环
+              break;
+          }
+          
+          // 检查是否是新的收集开始标记
+          if (line.startsWith('>>')) {
+              // 保存之前收集的内容（如果有）
+              if (collectingContent.trim() && collectingMode !== 'none') {
+                  messages.unshift({
+                      role: collectingMode,
+                      content: collectingContent.trim()
+                  });
+              }
+              
+              // 检查是否是单行用户输入（>>后面有内容）还是多行用户输入开始标记
+              const userContent = line.substring(2).trim(); // 去掉>>
+              if (userContent) {
+                  // 单行用户输入：直接收集>>这一行作为用户输入
+                  messages.unshift({
+                      role: 'user',
+                      content: userContent
+                  });
+                  
+                  // 重启收集循环
+                  collectingContent = "";
+                  collectingMode = 'none';
+              } else {
+                  // 多行用户输入开始：开始收集用户输入，不收集>>本行
+                  collectingContent = "";
+                  collectingMode = 'user';
+              }
+          }
+          else if (line.startsWith('<<')) {
+              // 保存之前收集的内容（如果有）
+              if (collectingContent.trim() && collectingMode !== 'none') {
+                  messages.unshift({
+                      role: collectingMode,
+                      content: collectingContent.trim()
+                  });
+              }
+              
+              // 开始收集AI回答，不收集<<本行
+              collectingContent = "";
+              collectingMode = 'assistant';
+          }
+          else if (line.startsWith('-----')) {
+              // 结束标记，保存收集的内容
+              if (collectingMode !== 'none' && collectingContent.trim()) {
+                  messages.unshift({
+                      role: collectingMode,
+                      content: collectingContent.trim()
+                  });
+              }
+              
+              // 重启收集循环
+              collectingContent = "";
+              collectingMode = 'none';
+          }
+          else if (collectingMode !== 'none') {
+              // 在收集模式下，收集当前行内容
+              if (collectingContent) {
+                  collectingContent = line + '\n' + collectingContent;
+              } else {
+                  collectingContent = line;
+              }
+          }
+      }
+      
+      // 处理遍历结束时可能未保存的内容
+      if (collectingContent.trim() && collectingMode !== 'none') {
+          messages.unshift({
+              role: collectingMode,
+              content: collectingContent.trim()
+          });
+      }
+      
+      return messages;
+  }
 
 private async generateResponse(prompt: string): Promise<string> {
     // 重置流式输出状态
@@ -321,13 +328,16 @@ private async loadSettings() {
   }
 
   // 格式化用户输入行
-  private async formatSelectedText(editor: Editor): Promise<{ line: number, ch: number }> {
+  // 格式化用户输入行
+private async formatSelectedText(editor: Editor): Promise<{ line: number, ch: number }> {
     const cursor = editor.getCursor();
     const baseLine = cursor.line; // 统一使用执行时光标所在行作为基础行号
     const originalText = editor.getLine(baseLine);
 
-    // 1. 在基础行插入代码块开始标记
-    editor.replaceRange(">>", { line: baseLine, ch: 0 });
+    // 1. 检查行首是否已经有>>，如果没有才插入
+    if (!originalText.startsWith('>>')) {
+        editor.replaceRange(">>", { line: baseLine, ch: 0 });
+    }
     
     // 2. 在下一行添加USER:前缀
     //editor.setLine(baseLine, `USER: ${originalText}`);
