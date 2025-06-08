@@ -21,6 +21,7 @@ export default class AIPlugin extends Plugin {
   settings: AIPluginSettings = DEFAULT_SETTINGS;
   private streamInsertPosition: { line: number, ch: number } | null = null;
   private lastContentLength = 0;
+  private statusNotice: Notice | null = null; // 添加状态提示变量
 
   async onload() {
     await this.loadSettings();
@@ -74,8 +75,136 @@ export default class AIPlugin extends Plugin {
 
   // OpenAI API调用函数
   private async callOpenAI(input: string): Promise<string> {
-    const response = await this.generateResponse(input);
-    return response;
+    // 显示开始状态
+    this.showStatusNotice("🤖 AI正在思考中...");
+    
+    try {
+      const response = await this.generateResponse(input);
+      return response;
+    } catch (error) {
+      // 出错时隐藏状态提示
+      this.hideStatusNotice();
+      throw error;
+    }
+  }
+
+  private async generateResponse(prompt: string): Promise<string> {
+    // 重置流式输出状态
+    this.streamInsertPosition = null;
+    this.lastContentLength = 0;
+    
+    // 获取上下文对话
+    const messages = await this.getContextMessages();
+    
+    // 构建完整的消息数组
+    const fullMessages = [
+        { role: "system", content: this.settings.systemPrompt },
+        ...messages,
+        { role: "user", content: prompt }
+    ];
+    
+    // 将消息转换为JSON字符串并复制到剪贴板
+    await navigator.clipboard.writeText(JSON.stringify(fullMessages, null, 2));
+    new Notice("已将对话上下文复制到剪贴板");
+    
+    // 更新状态为连接中
+    this.updateStatusNotice("🔗 正在连接AI服务...");
+    
+    const response = await fetch(this.settings.apiUrl, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${this.settings.apiKey}`
+        },
+        body: JSON.stringify({
+            model: this.settings.modelName,
+            messages: fullMessages,
+            stream: true  // 启用流式传输
+        })
+    });
+
+    if (!response.body) {
+        this.hideStatusNotice();
+        throw new Error('Response body is null');
+    }
+
+    // 更新状态为接收回复
+    this.updateStatusNotice("📝 AI正在回复中...");
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let result = '';
+
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+                // 流式输出结束，添加<<标记
+                this.finalizeStreamingContent();
+                // 隐藏状态提示
+                this.hideStatusNotice();
+                break;
+            }
+
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const data = line.slice(6);
+                    if (data === '[DONE]') {
+                        this.finalizeStreamingContent();
+                        this.hideStatusNotice();
+                        return result;
+                    }
+
+                    try {
+                        const parsed = JSON.parse(data);
+                        const content = parsed.choices?.[0]?.delta?.content;
+                        if (content) {
+                            result += content;
+                            // 增量更新编辑器内容
+                            this.updateStreamingContent(content);
+                        }
+                    } catch (e) {
+                        // 忽略解析错误
+                    }
+                }
+            }
+        }
+    } finally {
+        reader.releaseLock();
+        // 确保状态提示被隐藏
+        this.hideStatusNotice();
+    }
+
+    return result;
+  }
+
+  // 显示状态提示
+  private showStatusNotice(message: string) {
+    // 如果已有状态提示，先隐藏
+    this.hideStatusNotice();
+    
+    // 创建新的状态提示，设置较长的显示时间
+    this.statusNotice = new Notice(message, 0); // 0表示不自动隐藏
+  }
+
+  // 更新状态提示内容
+  private updateStatusNotice(message: string) {
+    if (this.statusNotice) {
+      // 隐藏当前提示，显示新提示
+      this.hideStatusNotice();
+    }
+    this.showStatusNotice(message);
+  }
+
+  // 隐藏状态提示
+  private hideStatusNotice() {
+    if (this.statusNotice) {
+      this.statusNotice.hide();
+      this.statusNotice = null;
+    }
   }
 
   // 从当前行向上收集对话上下文
@@ -173,87 +302,6 @@ export default class AIPlugin extends Plugin {
       
       return messages;
   }
-
-private async generateResponse(prompt: string): Promise<string> {
-    // 重置流式输出状态
-    this.streamInsertPosition = null;
-    this.lastContentLength = 0;
-    
-    // 获取上下文对话
-    const messages = await this.getContextMessages();
-    
-    // 构建完整的消息数组
-    const fullMessages = [
-        { role: "system", content: this.settings.systemPrompt },
-        ...messages,
-        { role: "user", content: prompt }
-    ];
-    
-    // 将消息转换为JSON字符串并复制到剪贴板
-    await navigator.clipboard.writeText(JSON.stringify(fullMessages, null, 2));
-    new Notice("已将对话上下文复制到剪贴板");
-    
-    const response = await fetch(this.settings.apiUrl, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${this.settings.apiKey}`
-        },
-        body: JSON.stringify({
-            model: this.settings.modelName,
-            messages: fullMessages,
-            stream: true  // 启用流式传输
-        })
-    });
-
-    if (!response.body) {
-        throw new Error('Response body is null');
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let result = '';
-
-    try {
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) {
-                // 流式输出结束，添加<<标记
-                this.finalizeStreamingContent();
-                break;
-            }
-
-            const chunk = decoder.decode(value);
-            const lines = chunk.split('\n');
-
-            for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    const data = line.slice(6);
-                    if (data === '[DONE]') {
-                        this.finalizeStreamingContent();
-                        return result;
-                    }
-
-                    try {
-                        const parsed = JSON.parse(data);
-                        const content = parsed.choices?.[0]?.delta?.content;
-                        if (content) {
-                            result += content;
-                            // 增量更新编辑器内容
-                            this.updateStreamingContent(content);
-                        }
-                    } catch (e) {
-                        // 忽略解析错误
-                    }
-                }
-            }
-        }
-    } finally {
-        reader.releaseLock();
-    }
-
-    return result;
-}
 
 // Flowing Content Updater
 private updateStreamingContent(newContent: string) {
