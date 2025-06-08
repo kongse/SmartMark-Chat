@@ -45,7 +45,7 @@ export default class AIPlugin extends Plugin {
 
           // 获取格式化后的当前行内容（去掉"USER: "前缀）
           const formattedLine = editor.getLine(cursor.line);
-          const queryText = formattedLine.replace(">>", "");
+          const queryText = formattedLine.replace("===", "");
 
           // 只调用AI，不再手动插入回复（流式输出已经处理了）
           await this.callOpenAI(queryText);
@@ -222,14 +222,14 @@ export default class AIPlugin extends Plugin {
           const line = editor.getLine(i);
           const trimmedLine = line.trim();
           
-          // 检查终止条件：遇到<>开头的行
-          if (trimmedLine.startsWith('<>')) {
+          // 检查终止条件：遇到=-=开头的行
+          if (trimmedLine.startsWith('=-=')) {
               // 终止收集循环
               break;
           }
           
-          // 检查是否是新的收集开始标记
-          if (line.startsWith('>>')) {
+          // 检查是否是USER输入标记
+          if (line.startsWith('===')) {
               // 保存之前收集的内容（如果有）
               if (collectingContent.trim() && collectingMode !== 'none') {
                   messages.unshift({
@@ -238,10 +238,10 @@ export default class AIPlugin extends Plugin {
                   });
               }
               
-              // 检查是否是单行用户输入（>>后面有内容）还是多行用户输入开始标记
-              const userContent = line.substring(2).trim(); // 去掉>>
+              // 检查是否是单行用户输入（===在行首且本行非空）
+              const userContent = line.substring(3).trim(); // 去掉===
               if (userContent) {
-                  // 单行用户输入：直接收集>>这一行作为用户输入
+                  // 单行用户输入：直接收集===这一行作为用户输入
                   messages.unshift({
                       role: 'user',
                       content: userContent
@@ -251,12 +251,13 @@ export default class AIPlugin extends Plugin {
                   collectingContent = "";
                   collectingMode = 'none';
               } else {
-                  // 多行用户输入开始：开始收集用户输入，不收集>>本行
+                  // 多行用户输入开始：开始收集用户输入，不收集===本行
                   collectingContent = "";
                   collectingMode = 'user';
               }
           }
-          else if (line.startsWith('<<')) {
+          // 检查是否是行末的===（多行用户输入结束）
+          else if (line.endsWith('===') && trimmedLine.length > 3) {
               // 保存之前收集的内容（如果有）
               if (collectingContent.trim() && collectingMode !== 'none') {
                   messages.unshift({
@@ -265,8 +266,56 @@ export default class AIPlugin extends Plugin {
                   });
               }
               
-              // 开始收集AI回答，不收集<<本行
-              collectingContent = "";
+              // 获取===之前的内容作为当前行的用户输入内容
+              const userContent = line.substring(0, line.length - 3).trim();
+              
+              // 开始收集多行用户输入，将当前行内容加入
+              collectingContent = userContent;
+              collectingMode = 'user';
+          }
+          // 检查是否是AI输入标记
+          else if (line.startsWith('= =')) {
+              // 保存之前收集的内容（如果有）
+              if (collectingContent.trim() && collectingMode !== 'none') {
+                  messages.unshift({
+                      role: collectingMode,
+                      content: collectingContent.trim()
+                  });
+              }
+              
+              // 检查是否是单行AI输入（= =在行首且本行非空）
+              const aiContent = line.substring(3).trim(); // 去掉"= ="
+              if (aiContent) {
+                  // 单行AI输入：直接收集= =这一行作为AI输入
+                  messages.unshift({
+                      role: 'assistant',
+                      content: aiContent
+                  });
+                  
+                  // 重启收集循环
+                  collectingContent = "";
+                  collectingMode = 'none';
+              } else {
+                  // 多行AI输入开始：开始收集AI回答，不收集= =本行
+                  collectingContent = "";
+                  collectingMode = 'assistant';
+              }
+          }
+          // 检查是否是行末的"= ="（多行AI输入结束）
+          else if (line.endsWith('= =') && trimmedLine.length > 3) {
+              // 保存之前收集的内容（如果有）
+              if (collectingContent.trim() && collectingMode !== 'none') {
+                  messages.unshift({
+                      role: collectingMode,
+                      content: collectingContent.trim()
+                  });
+              }
+              
+              // 获取"= ="之前的内容作为当前行的AI输入内容
+              const aiContent = line.substring(0, line.length - 3).trim();
+              
+              // 开始收集多行AI输入，将当前行内容加入
+              collectingContent = aiContent;
               collectingMode = 'assistant';
           }
           else if (line.startsWith('-----')) {
@@ -341,7 +390,7 @@ private updateStreamingContent(newContent: string) {
     this.lastContentLength += newContent.length;
 }
 
-// 在流式输出结束后添加<<标记
+// 在流式输出结束后添加= =标记
 private finalizeStreamingContent() {
     const editor = this.app.workspace.activeEditor?.editor;
     if (!editor || !this.streamInsertPosition) return;
@@ -358,12 +407,15 @@ private finalizeStreamingContent() {
         hour12: false
     }).replace(/\//g, '/').replace(/,/g, '');
     
-    // 在内容末尾添加<<标记和时间戳
+    // 获取当前AI回答内容的结束位置
     const endPos = {
         line: this.streamInsertPosition.line,
         ch: this.streamInsertPosition.ch + this.lastContentLength
     };
-    editor.replaceRange(`\n<<  [Timestamp: ${timestamp}]\n\n`, endPos);
+
+    editor.replaceRange('= =', endPos);
+    //editor.replaceRange(`\n<<  [Timestamp: ${timestamp}]\n\n`, endPos);
+
 }
 
 // 加载设置
@@ -382,9 +434,9 @@ private async formatSelectedText(editor: Editor): Promise<{ line: number, ch: nu
     const baseLine = cursor.line; // 统一使用执行时光标所在行作为基础行号
     const originalText = editor.getLine(baseLine);
 
-    // 1. 检查行首是否已经有>>，如果没有才插入
-    if (!originalText.startsWith('>>')) {
-        editor.replaceRange(">>", { line: baseLine, ch: 0 });
+    // 1. 检查行首是否已经===，如果没有才插入
+    if (!originalText.startsWith('===')) {
+        editor.replaceRange("===", { line: baseLine, ch: 0 });
     }
     
     // 2. 在下一行添加USER:前缀
