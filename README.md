@@ -1,3 +1,5 @@
+![Animation](images/readme.gif)
+
 We are thrilled to announce the release of **Think AI v0.5.0**, a major milestone that marks the birth of a revolutionary way to interact with AI within Obsidian. This isn't just an update; it's the dawn of a new paradigm for knowledge creation, built upon the elegant and powerful **SmartMark Protocol**.
 
 SmartMark, Mark Smart!
