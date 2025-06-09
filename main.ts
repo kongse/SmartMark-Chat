@@ -34,25 +34,20 @@ export default class AIPlugin extends Plugin {
         try {
           const cursor = editor.getCursor();
           const currentLine = editor.getLine(cursor.line);
-
+      
           if (!this.settings.apiKey) {
             new Notice("⚠️ Please SETUP API Keys First！");
             return;
           }
-
-          // 先格式化文本
-          this.formatSelectedText(editor);
-
-          // 获取格式化后的当前行内容（去掉"USER: "前缀）
-          const formattedLine = editor.getLine(cursor.line);
-          const queryText = formattedLine.replace("===", "");
-
-          // 只调用AI，不再手动插入回复（流式输出已经处理了）
-          await this.callOpenAI(queryText);
-
-          // 移动光标到文档末尾
-          //editor.setCursor(editor.lastLine());
-          
+      
+          // 在当前行前面添加===（如果还没有的话）
+          if (!currentLine.startsWith('===')) {
+            editor.replaceRange("===", { line: cursor.line, ch: 0 });
+          }
+      
+          // 直接调用AI，generateResponse中会自动调用getContextMessages()获取完整上下文
+          await this.callOpenAI(""); // 传空字符串，因为上下文已经在getContextMessages中处理了
+      
         } catch (error) {
           new Notice(`CALL AI API ERROR: ${error}`);
           console.error(error);
@@ -231,7 +226,7 @@ export default class AIPlugin extends Plugin {
       let collectingMode: 'user' | 'assistant' | 'none' = 'none';
       
       // 从当前行向上遍历
-      for (let i = currentLine - 1; i >= 0 && messages.length < this.settings.contextLines * 2; i--) {
+      for (let i = currentLine; i >= 0 && messages.length < this.settings.contextLines * 2; i--) {
           const line = editor.getLine(i);
           const trimmedLine = line.trim();
           
