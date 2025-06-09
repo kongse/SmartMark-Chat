@@ -42,6 +42,31 @@ This release is the culmination of deep thought into how AI can truly serve as a
 
 Thank you for being on this journey with us. We can't wait to see the incredible things you'll create!
 
+---
+
+**SmartMark in PlainText**
+
+
+
+<img src="images/plaintext.jpg" width="500" />
+
+---
+
+**SmartMark in Obsidian** (Default Theme) Nicely Rendered
+
+
+
+<img src="images/obsidian.jpg" width="500" />
+
+---
+
+**SmartMark in Docusaurus** (Default Theme)
+
+
+
+<img src="images/docusaurus.jpg" width="500" />
+
+---
 
 
 
@@ -55,13 +80,14 @@ Thank you for being on this journey with us. We can't wait to see the incredible
 
 
 
-# Smart Mark Protocol Specification v1.0
+
+# SmartMark Protocol Specification v1.0
 
 **Motto:** `SmartMark, Mark Smart!`
 
 ### 1. Introduction: Philosophy and Goals
 
-**`Smart Mark`** is an open, plain-text protocol designed to structure, manage, and interact with AI conversations directly within Markdown-native environments. It was born from the need to transform ephemeral AI chats into durable, human-readable, and machine-parsable knowledge assets.
+**`SmartMark: `** is an open, plain-text protocol designed to structure, manage, and interact with AI conversations directly within Markdown-native environments. It was born from the need to transform ephemeral AI chats into durable, human-readable, and machine-parsable knowledge assets.
 
 The core design goals are:
 *   **Human Readability:** The format must be intuitive and aesthetically pleasing, even in a plain-text editor.
@@ -71,7 +97,7 @@ The core design goals are:
 
 ### 2. Core Design Principle: Reverse-Order Parsing
 
-A fundamental and unique characteristic of the `Smart Mark` protocol is that it is **designed to be parsed in reverse order** (from the bottom up, or from a trigger point upwards). This is not an arbitrary choice, but a deliberate architectural decision with profound benefits.
+A fundamental and unique characteristic of the `SmartMark: ` protocol is that it is **designed to be parsed in reverse order** (from the bottom up, or from a trigger point upwards). This is not an arbitrary choice, but a deliberate architectural decision with profound benefits.
 
 **Why Reverse-Order Parsing?**
 
@@ -127,8 +153,6 @@ The logic is perfectly symmetrical to User Input Parsing.
         ```markdown
         -----
         Certainly. Here is a basic implementation using LangChain and Faiss.= =
-        ```
-
 #### 4.3. Context Termination Rule
 
 *   **Condition:** During any reverse-order traversal for context, a line containing `=-=` is found.
