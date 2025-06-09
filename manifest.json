@@ -1,10 +1,10 @@
 {
-	"id": "thinker-ai",
-	"name": "Thinker AI",
-	"version": "0.1.0",
+	"id": "smartmark-chat",
+	"name": "SmartMark Chat",
+	"version": "0.5.0",
 	"minAppVersion": "1.80.0",
 	"description": "AI-Powered Inline Chat for Obsidian | Boost Your Thinking Flow.",
 	"author": "Kongse",
-	"authorUrl": "https://github.com/kongse/thinker-ai",
-	"isDesktopOnly": false
+	"authorUrl": "https://github.com/kongse/smartmark-chat",
+	"isDesktopOnly": true
 }

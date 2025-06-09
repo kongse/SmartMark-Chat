@@ -29,8 +29,8 @@ export default class AIPlugin extends Plugin {
     await this.loadSettings();
     //  按快捷键时执行
     this.addCommand({
-      id: 'call-ai-api',
-      name: 'Call AI API',
+      id: 'ask-ai',
+      name: 'Ask AI',
       hotkeys: [{ modifiers: ["Ctrl"], key: "Enter" }],
       editorCallback: async (editor: Editor) => {
         try {
