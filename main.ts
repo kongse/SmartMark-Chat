@@ -5,15 +5,17 @@ interface AIPluginSettings {
   apiUrl: string;
   modelName: string;
   systemPrompt: string;
-  contextLines: number; // 添加设置项：收集多少轮对话作为上下文
+  contextLines: number;
+  elegantMode: boolean; // 添加elegant mode设置
 }
 
 const DEFAULT_SETTINGS: AIPluginSettings = {
   apiKey: "",
   apiUrl: "https://api.openai.com/v1/chat/completions",
-  modelName: "gpt-3.5-turbo",  // 确保有默认值
+  modelName: "gpt-3.5-turbo",
   systemPrompt: "你是一个有帮助的AI助手",
-  contextLines: 3  // 默认收集3轮对话
+  contextLines: 3,
+  elegantMode: true // 默认关闭elegant mode
 };
 
 // 主插件类
@@ -370,9 +372,10 @@ private updateStreamingContent(newContent: string) {
             this.streamInsertPosition = { line: cursor.line + 1, ch: 0 };
         }
         
-        // 插入AI标记
-        editor.replaceRange("-----\n", this.streamInsertPosition);
-        this.streamInsertPosition.ch = 6; // "-----\n"的长度
+        // 根据elegant mode设置插入不同格式的AI标记
+        const separator = this.settings.elegantMode ? "\n-----\n" : "-----\n";
+        editor.replaceRange(separator, this.streamInsertPosition);
+        this.streamInsertPosition.ch = separator.length;
     }
     
     // 计算当前应该插入的位置
@@ -550,5 +553,16 @@ class AISettingsTab extends PluginSettingTab {
                     this.plugin.settings.contextLines = Number(value) || 0;
                     await this.plugin.saveSettings();
                 }));
-    }
+    
+    // 添加elegant mode设置
+    new Setting(containerEl)
+        .setName("Elegant Mode")
+        .setDesc("开启后，AI回复的分隔符前会添加额外的换行符，让格式更加优雅")
+        .addToggle(toggle => toggle
+            .setValue(this.plugin.settings.elegantMode)
+            .onChange(async (value) => {
+                this.plugin.settings.elegantMode = value;
+                await this.plugin.saveSettings();
+            }));
+}
 }
