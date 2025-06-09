@@ -95,7 +95,7 @@ export default class AIPlugin extends Plugin {
     const fullMessages = [
         { role: "system", content: this.settings.systemPrompt },
         ...messages,
-        { role: "user", content: prompt }
+       // { role: "user", content: prompt }  //以前单行输入按CTRL+ENTER是，当前行会采集为prompt，这里输入，现在因为是全文采集，不需要了。
     ];
     
     // 将消息转换为JSON字符串并复制到剪贴板
