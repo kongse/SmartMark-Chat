@@ -207,7 +207,20 @@ export default class AIPlugin extends Plugin {
     }
   }
 
-  // 从当前行向上收集对话上下文
+  // 保存收集的内容到消息数组的辅助函数
+  private saveCollectedContent(
+    messages: Array<{role: string, content: string}>,
+    collectingContent: string,
+    collectingMode: 'user' | 'assistant' | 'none'
+  ): void {
+    if (collectingContent.trim() && collectingMode !== 'none') {
+      messages.unshift({
+        role: collectingMode,
+        content: collectingContent.trim()
+      });
+    }
+  }
+
   private async getContextMessages(): Promise<Array<{role: string, content: string}>> {
       const editor = this.app.workspace.activeEditor?.editor;
       if (!editor) return [];
@@ -228,15 +241,34 @@ export default class AIPlugin extends Plugin {
               break;
           }
           
-          // 检查是否是USER输入标记
-          if (line.startsWith('===')) {
+          // 优先检查多行用户输入结束标记（行末的===）
+          if (line.endsWith('===') && trimmedLine.length > 3) {
               // 保存之前收集的内容（如果有）
-              if (collectingContent.trim() && collectingMode !== 'none') {
-                  messages.unshift({
-                      role: collectingMode,
-                      content: collectingContent.trim()
-                  });
-              }
+              this.saveCollectedContent(messages, collectingContent, collectingMode);
+              
+              // 获取===之前的内容作为当前行的用户输入内容
+              const userContent = line.substring(0, line.length - 3).trim();
+              
+              // 开始收集多行用户输入，将当前行内容加入
+              collectingContent = userContent;
+              collectingMode = 'user';
+          }
+          // 优先检查多行AI输入结束标记（行末的"= ="）
+          else if (line.endsWith('= =') && trimmedLine.length > 3) {
+              // 保存之前收集的内容（如果有）
+              this.saveCollectedContent(messages, collectingContent, collectingMode);
+              
+              // 获取"= ="之前的内容作为当前行的AI输入内容
+              const aiContent = line.substring(0, line.length - 3).trim();
+              
+              // 开始收集多行AI输入，将当前行内容加入
+              collectingContent = aiContent;
+              collectingMode = 'assistant';
+          }
+          // 检查是否是USER输入标记（单行处理）
+          else if (line.startsWith('===')) {
+              // 保存之前收集的内容（如果有）
+              this.saveCollectedContent(messages, collectingContent, collectingMode);
               
               // 检查是否是单行用户输入（===在行首且本行非空）
               const userContent = line.substring(3).trim(); // 去掉===
@@ -256,32 +288,10 @@ export default class AIPlugin extends Plugin {
                   collectingMode = 'user';
               }
           }
-          // 检查是否是行末的===（多行用户输入结束）
-          else if (line.endsWith('===') && trimmedLine.length > 3) {
-              // 保存之前收集的内容（如果有）
-              if (collectingContent.trim() && collectingMode !== 'none') {
-                  messages.unshift({
-                      role: collectingMode,
-                      content: collectingContent.trim()
-                  });
-              }
-              
-              // 获取===之前的内容作为当前行的用户输入内容
-              const userContent = line.substring(0, line.length - 3).trim();
-              
-              // 开始收集多行用户输入，将当前行内容加入
-              collectingContent = userContent;
-              collectingMode = 'user';
-          }
-          // 检查是否是AI输入标记
+          // 检查是否是AI输入标记（单行处理）
           else if (line.startsWith('= =')) {
               // 保存之前收集的内容（如果有）
-              if (collectingContent.trim() && collectingMode !== 'none') {
-                  messages.unshift({
-                      role: collectingMode,
-                      content: collectingContent.trim()
-                  });
-              }
+              this.saveCollectedContent(messages, collectingContent, collectingMode);
               
               // 检查是否是单行AI输入（= =在行首且本行非空）
               const aiContent = line.substring(3).trim(); // 去掉"= ="
@@ -301,31 +311,9 @@ export default class AIPlugin extends Plugin {
                   collectingMode = 'assistant';
               }
           }
-          // 检查是否是行末的"= ="（多行AI输入结束）
-          else if (line.endsWith('= =') && trimmedLine.length > 3) {
-              // 保存之前收集的内容（如果有）
-              if (collectingContent.trim() && collectingMode !== 'none') {
-                  messages.unshift({
-                      role: collectingMode,
-                      content: collectingContent.trim()
-                  });
-              }
-              
-              // 获取"= ="之前的内容作为当前行的AI输入内容
-              const aiContent = line.substring(0, line.length - 3).trim();
-              
-              // 开始收集多行AI输入，将当前行内容加入
-              collectingContent = aiContent;
-              collectingMode = 'assistant';
-          }
           else if (line.startsWith('-----')) {
               // 结束标记，保存收集的内容
-              if (collectingMode !== 'none' && collectingContent.trim()) {
-                  messages.unshift({
-                      role: collectingMode,
-                      content: collectingContent.trim()
-                  });
-              }
+              this.saveCollectedContent(messages, collectingContent, collectingMode);
               
               // 重启收集循环
               collectingContent = "";
@@ -342,12 +330,7 @@ export default class AIPlugin extends Plugin {
       }
       
       // 处理遍历结束时可能未保存的内容
-      if (collectingContent.trim() && collectingMode !== 'none') {
-          messages.unshift({
-              role: collectingMode,
-              content: collectingContent.trim()
-          });
-      }
+      this.saveCollectedContent(messages, collectingContent, collectingMode);
       
       return messages;
   }
