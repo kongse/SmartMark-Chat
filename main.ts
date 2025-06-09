@@ -241,75 +241,93 @@ export default class AIPlugin extends Plugin {
               break;
           }
           
-          // 优先检查多行用户输入结束标记（行末的===）
-          if (line.endsWith('===') && trimmedLine.length > 3) {
-              // 保存之前收集的内容（如果有）
-              this.saveCollectedContent(messages, collectingContent, collectingMode);
-              
-              // 获取===之前的内容作为当前行的用户输入内容
-              const userContent = line.substring(0, line.length - 3).trim();
-              
-              // 开始收集多行用户输入，将当前行内容加入
-              collectingContent = userContent;
-              collectingMode = 'user';
+          // 检查用户输入标记（===）
+          if (line.includes('===')) {
+          // 优先处理：行首行尾都有===且长度大于6的情况（多行输入开始）
+          if (line.startsWith('===') && line.endsWith('===') && line.length > 6) {
+          // 保存之前收集的内容（如果有）
+          this.saveCollectedContent(messages, collectingContent, collectingMode);
+          
+          // 获取===之间的内容作为当前行的用户输入内容
+          const userContent = line.substring(3, line.length - 3).trim();
+          
+          // 开始收集多行用户输入，将当前行内容加入
+          collectingContent = userContent;
+          collectingMode = 'user';
           }
-          // 优先检查多行AI输入结束标记（行末的"= ="）
-          else if (line.endsWith('= =') && trimmedLine.length > 3) {
-              // 保存之前收集的内容（如果有）
-              this.saveCollectedContent(messages, collectingContent, collectingMode);
-              
-              // 获取"= ="之前的内容作为当前行的AI输入内容
-              const aiContent = line.substring(0, line.length - 3).trim();
-              
-              // 开始收集多行AI输入，将当前行内容加入
-              collectingContent = aiContent;
-              collectingMode = 'assistant';
+          // 其次处理：行尾有===的情况（多行输入结束）
+          else if (line.endsWith('===') && !line.startsWith('===')) {
+          // 保存之前收集的内容（如果有）
+          this.saveCollectedContent(messages, collectingContent, collectingMode);
+          
+          // 获取===之前的内容作为当前行的用户输入内容
+          const userContent = line.substring(0, line.length - 3).trim();
+          
+          // 开始收集多行用户输入，将当前行内容加入
+          collectingContent = userContent;
+          collectingMode = 'user';
           }
-          // 检查是否是USER输入标记（单行处理）
-          else if (line.startsWith('===')) {
-              // 保存之前收集的内容（如果有）
-              this.saveCollectedContent(messages, collectingContent, collectingMode);
-              
-              // 检查是否是单行用户输入（===在行首且本行非空）
-              const userContent = line.substring(3).trim(); // 去掉===
-              if (userContent) {
-                  // 单行用户输入：直接收集===这一行作为用户输入
-                  messages.unshift({
-                      role: 'user',
-                      content: userContent
-                  });
-                  
-                  // 重启收集循环
-                  collectingContent = "";
-                  collectingMode = 'none';
-              } else {
-                  // 多行用户输入开始：开始收集用户输入，不收集===本行
-                  collectingContent = "";
-                  collectingMode = 'user';
-              }
+          // 最后处理：行首有===的情况（单行输入）
+          else if (line.startsWith('===') && !line.endsWith('===')) {
+          // 保存之前收集的内容（如果有）
+          this.saveCollectedContent(messages, collectingContent, collectingMode);
+          
+          // 单行用户输入：直接收集===这一行作为用户输入
+          const userContent = line.substring(3).trim(); // 去掉===
+          messages.unshift({
+          role: 'user',
+          content: userContent
+          });
+          
+          // 重启收集循环
+          collectingContent = "";
+          collectingMode = 'none';
           }
-          // 检查是否是AI输入标记（单行处理）
-          else if (line.startsWith('= =')) {
-              // 保存之前收集的内容（如果有）
-              this.saveCollectedContent(messages, collectingContent, collectingMode);
-              
-              // 检查是否是单行AI输入（= =在行首且本行非空）
-              const aiContent = line.substring(3).trim(); // 去掉"= ="
-              if (aiContent) {
-                  // 单行AI输入：直接收集= =这一行作为AI输入
-                  messages.unshift({
-                      role: 'assistant',
-                      content: aiContent
-                  });
-                  
-                  // 重启收集循环
-                  collectingContent = "";
-                  collectingMode = 'none';
-              } else {
-                  // 多行AI输入开始：开始收集AI回答，不收集= =本行
-                  collectingContent = "";
-                  collectingMode = 'assistant';
-              }
+          // 单独的===行（长度等于3）将被忽略，不做任何处理
+          }
+          // 检查AI输入标记（= =）
+          else if (line.includes('= =')) {
+          // 优先处理：行首行尾都有= =且长度大于6的情况（多行输入开始）
+          if (line.startsWith('= =') && line.endsWith('= =') && line.length > 6) {
+          // 保存之前收集的内容（如果有）
+          this.saveCollectedContent(messages, collectingContent, collectingMode);
+          
+          // 获取= =之间的内容作为当前行的AI输入内容
+          const aiContent = line.substring(3, line.length - 3).trim();
+          
+          // 开始收集多行AI输入，将当前行内容加入
+          collectingContent = aiContent;
+          collectingMode = 'assistant';
+          }
+          // 其次处理：行尾有= =的情况（多行输入结束）
+          else if (line.endsWith('= =') && !line.startsWith('= =')) {
+          // 保存之前收集的内容（如果有）
+          this.saveCollectedContent(messages, collectingContent, collectingMode);
+          
+          // 获取"= ="之前的内容作为当前行的AI输入内容
+          const aiContent = line.substring(0, line.length - 3).trim();
+          
+          // 开始收集多行AI输入，将当前行内容加入
+          collectingContent = aiContent;
+          collectingMode = 'assistant';
+          }
+          // 最后处理：行首有= =的情况（单行输入）
+          else if (line.startsWith('= =') && !line.endsWith('= =')) {
+          // 保存之前收集的内容（如果有）
+          this.saveCollectedContent(messages, collectingContent, collectingMode);
+          
+          // 单行AI输入：直接收集= =这一行作为AI输入
+          const aiContent = line.substring(3).trim(); // 去掉"= ="
+          messages.unshift({
+          role: 'assistant',
+          content: aiContent
+          });
+          
+          // 重启收集循环
+          collectingContent = "";
+          collectingMode = 'none';
+          }
+          // 单独的= =行（长度等于3）将被忽略，不做任何处理
           }
           else if (line.startsWith('-----')) {
               // 结束标记，保存收集的内容
