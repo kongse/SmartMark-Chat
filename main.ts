@@ -24,6 +24,8 @@ export default class AIPlugin extends Plugin {
   private streamInsertPosition: { line: number, ch: number } | null = null;
   private lastContentLength = 0;
   private statusNotice: Notice | null = null; // 添加状态提示变量
+  private currentAbortController: AbortController | null = null; // 添加中断控制器
+  private isStreaming = false; // 添加流式状态标记
 
   async onload() {
     await this.loadSettings();
@@ -66,6 +68,16 @@ export default class AIPlugin extends Plugin {
       }
     });
 
+    // 添加中断AI回复的快捷键  (CTRL U)
+    this.addCommand({
+      id: 'interrupt-ai',
+      name: 'Interrupt AI Response',
+      hotkeys: [{ modifiers: ["Ctrl"], key: "u" }],
+      callback: () => {
+        this.interruptAI();
+      }
+    });
+
     // 添加设置选项卡 (用于配置AI参数等)
     this.addSettingTab(new AISettingsTab(this.app, this));
   }
@@ -81,7 +93,37 @@ export default class AIPlugin extends Plugin {
     } catch (error) {
       // 出错时隐藏状态提示
       this.hideStatusNotice();
+      this.isStreaming = false;
       throw error;
+    }
+  }
+
+  // 中断AI回复
+  private interruptAI(): void {
+    if (this.isStreaming && this.currentAbortController) {
+      this.currentAbortController.abort();
+      this.hideStatusNotice();
+      this.showStatusNotice("⚠️ AI回复已中断");
+      
+      // 在编辑器中添加中断标记
+      const editor = this.app.workspace.activeEditor?.editor;
+      if (editor && this.streamInsertPosition) {
+        const endPos = {
+          line: this.streamInsertPosition.line,
+          ch: this.streamInsertPosition.ch + this.lastContentLength
+        };
+        editor.replaceRange('\n[AI回复已中断]\n= =', endPos);
+      }
+      
+      this.isStreaming = false;
+      this.currentAbortController = null;
+      
+      // 2秒后隐藏中断提示
+      setTimeout(() => {
+        this.hideStatusNotice();
+      }, 2000);
+    } else {
+      new Notice("当前没有正在进行的AI回复");
     }
   }
 
@@ -89,6 +131,10 @@ export default class AIPlugin extends Plugin {
     // 重置流式输出状态
     this.streamInsertPosition = null;
     this.lastContentLength = 0;
+    this.isStreaming = true;
+    
+    // 创建新的AbortController
+    this.currentAbortController = new AbortController();
     
     // 获取上下文对话
     const messages = await this.getContextMessages();
@@ -117,7 +163,8 @@ export default class AIPlugin extends Plugin {
             model: this.settings.modelName,
             messages: fullMessages,
             stream: true  // 启用流式传输
-        })
+        }),
+        signal: this.currentAbortController.signal  // 添加中断信号
     });
 
     if (!response.body) {
@@ -134,12 +181,18 @@ export default class AIPlugin extends Plugin {
 
     try {
         while (true) {
+            // 检查是否被中断
+            if (this.currentAbortController?.signal.aborted) {
+                break;
+            }
+            
             const { done, value } = await reader.read();
             if (done) {
                 // 流式输出结束，添加<<标记
                 this.finalizeStreamingContent();
                 // 隐藏状态提示
                 this.hideStatusNotice();
+                this.isStreaming = false;
                 break;
             }
 
@@ -152,6 +205,7 @@ export default class AIPlugin extends Plugin {
                     if (data === '[DONE]') {
                         this.finalizeStreamingContent();
                         this.hideStatusNotice();
+                        this.isStreaming = false;
                         return result;
                     }
 
@@ -169,10 +223,20 @@ export default class AIPlugin extends Plugin {
                 }
             }
         }
+    } catch (error) {
+        // 处理中断错误
+        if (error.name === 'AbortError') {
+            // 请求被中断，这是正常情况
+            this.isStreaming = false;
+            return result;
+        }
+        throw error;
     } finally {
         reader.releaseLock();
         // 确保状态提示被隐藏
         this.hideStatusNotice();
+        this.isStreaming = false;
+        this.currentAbortController = null;
     }
 
     return result;
