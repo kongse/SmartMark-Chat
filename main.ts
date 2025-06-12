@@ -412,7 +412,7 @@ private finalizeStreamingContent() {
         ch: this.streamInsertPosition.ch + this.lastContentLength
     };
 
-    editor.replaceRange('= =', endPos);
+    editor.replaceRange('\n= =', endPos);  //添加\n，保证= =在新的一行，兼容 Docusaurus 的 </details> 折叠块标记（可以直接替换，编程方便）
     //editor.replaceRange(`\n<<  [Timestamp: ${timestamp}]\n\n`, endPos);
 
 }
