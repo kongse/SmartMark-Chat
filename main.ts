@@ -7,6 +7,7 @@ interface AIPluginSettings {
   systemPrompt: string;
   contextLines: number;
   elegantMode: boolean; // 添加elegant mode设置
+  enableTimestamp: boolean; // 添加时间戳开关
 }
 
 const DEFAULT_SETTINGS: AIPluginSettings = {
@@ -15,7 +16,8 @@ const DEFAULT_SETTINGS: AIPluginSettings = {
   modelName: "gpt-3.5-turbo",
   systemPrompt: "你是一个有帮助的AI助手",
   contextLines: 3,
-  elegantMode: true // 默认关闭elegant mode
+  elegantMode: true, // 默认关闭elegant mode
+  enableTimestamp: true // 默认开启时间戳
 };
 
 // 主插件类
@@ -428,27 +430,39 @@ private finalizeStreamingContent() {
     const editor = this.app.workspace.activeEditor?.editor;
     if (!editor || !this.streamInsertPosition) return;
     
-    // 生成时间戳
-    const now = new Date();
-    const timestamp = now.toLocaleString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-    }).replace(/\//g, '/').replace(/,/g, '');
-    
     // 获取当前AI回答内容的结束位置
     const endPos = {
         line: this.streamInsertPosition.line,
         ch: this.streamInsertPosition.ch + this.lastContentLength
     };
 
-    editor.replaceRange('\n= =', endPos);  //添加\n，保证= =在新的一行，兼容 Docusaurus 的 </details> 折叠块标记（可以直接替换，编程方便）
-    //editor.replaceRange(`\n<<  [Timestamp: ${timestamp}]\n\n`, endPos);
+    let finalContent = '\n= =';
+    
+    // 如果启用了时间戳，添加emacs格式的时间戳
+    if (this.settings.enableTimestamp) {
+        const now = new Date();
+        // 生成emacs格式的时间戳：<2024-01-15 Mon 14:30:25 +0800>
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const weekday = weekdays[now.getDay()];
+        const hour = String(now.getHours()).padStart(2, '0');
+        const minute = String(now.getMinutes()).padStart(2, '0');
+        const second = String(now.getSeconds()).padStart(2, '0');
+        
+        // 获取时区偏移
+        const timezoneOffset = -now.getTimezoneOffset();
+        const offsetHours = Math.floor(Math.abs(timezoneOffset) / 60);
+        const offsetMinutes = Math.abs(timezoneOffset) % 60;
+        const offsetSign = timezoneOffset >= 0 ? '+' : '-';
+        const timezone = `${offsetSign}${String(offsetHours).padStart(2, '0')}${String(offsetMinutes).padStart(2, '0')}`;
+        
+        const emacsTimestamp = `<!-- ${year}-${month}-${day} ${weekday} ${hour}:${minute}:${second} ${timezone} -->`;
+        finalContent += `\n${emacsTimestamp}`;
+    }
 
+    editor.replaceRange(finalContent, endPos);
 }
 
 // 加载设置
@@ -596,6 +610,17 @@ class AISettingsTab extends PluginSettingTab {
             .setValue(this.plugin.settings.elegantMode)
             .onChange(async (value) => {
                 this.plugin.settings.elegantMode = value;
+                await this.plugin.saveSettings();
+            }));
+
+    // 添加时间戳设置
+    new Setting(containerEl)
+        .setName("启用时间戳")
+        .setDesc("开启后，在AI回复结束的= =标记下方添加emacs格式的时间戳")
+        .addToggle(toggle => toggle
+            .setValue(this.plugin.settings.enableTimestamp)
+            .onChange(async (value) => {
+                this.plugin.settings.enableTimestamp = value;
                 await this.plugin.saveSettings();
             }));
 }
