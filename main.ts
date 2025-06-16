@@ -171,7 +171,15 @@ export default class AIPlugin extends Plugin {
         body: JSON.stringify({
             model: this.settings.modelName,
             messages: fullMessages,
-            stream: true  // 启用流式传输
+            stream: true,  // 启用流式传输
+            extra_body: {
+              "google": {
+                "thinking_config": {
+                  "include_thoughts": true,
+                  "thinkingBudget": 0
+                }
+              }
+            }
         }),
         signal: this.currentAbortController.signal  // 添加中断信号
     };
