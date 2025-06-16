@@ -8,6 +8,9 @@ interface AIPluginSettings {
   contextLines: number;
   elegantMode: boolean; // 添加elegant mode设置
   enableTimestamp: boolean; // 添加时间戳开关
+  httpProxy: string; // HTTP代理设置
+  httpsProxy: string; // HTTPS代理设置
+  enableProxy: boolean; // 启用代理开关
 }
 
 const DEFAULT_SETTINGS: AIPluginSettings = {
@@ -17,7 +20,10 @@ const DEFAULT_SETTINGS: AIPluginSettings = {
   systemPrompt: "你是一个有帮助的AI助手",
   contextLines: 3,
   elegantMode: true, // 默认关闭elegant mode
-  enableTimestamp: true // 默认开启时间戳
+  enableTimestamp: true, // 默认开启时间戳
+  httpProxy: "", // 默认无HTTP代理
+  httpsProxy: "", // 默认无HTTPS代理
+  enableProxy: false // 默认关闭代理
 };
 
 // 主插件类
@@ -155,7 +161,8 @@ export default class AIPlugin extends Plugin {
     // 更新状态为连接中
     this.updateStatusNotice("🔗 正在连接AI服务...");
     
-    const response = await fetch(this.settings.apiUrl, {
+    // 构建fetch选项
+    const fetchOptions: RequestInit = {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -167,7 +174,32 @@ export default class AIPlugin extends Plugin {
             stream: true  // 启用流式传输
         }),
         signal: this.currentAbortController.signal  // 添加中断信号
-    });
+    };
+    
+    // 如果启用了代理，设置代理环境变量
+    if (this.settings.enableProxy) {
+        // 在Node.js环境中设置代理环境变量
+        if (typeof process !== 'undefined' && process.env) {
+            if (this.settings.httpProxy) {
+                process.env.HTTP_PROXY = this.settings.httpProxy;
+                process.env.http_proxy = this.settings.httpProxy;
+            }
+            if (this.settings.httpsProxy) {
+                process.env.HTTPS_PROXY = this.settings.httpsProxy;
+                process.env.https_proxy = this.settings.httpsProxy;
+            }
+        }
+    } else {
+        // 禁用代理时清空环境变量
+        if (typeof process !== 'undefined' && process.env) {
+            process.env.HTTP_PROXY = '';
+            process.env.HTTPS_PROXY = '';
+            process.env.http_proxy = '';
+            process.env.https_proxy = '';
+        }
+    }
+    
+    const response = await fetch(this.settings.apiUrl, fetchOptions);
 
     if (!response.body) {
         this.hideStatusNotice();
@@ -621,6 +653,44 @@ class AISettingsTab extends PluginSettingTab {
             .setValue(this.plugin.settings.enableTimestamp)
             .onChange(async (value) => {
                 this.plugin.settings.enableTimestamp = value;
+                await this.plugin.saveSettings();
+            }));
+
+    // 添加代理设置分隔符
+    containerEl.createEl('h3', { text: '代理设置' });
+
+    // 添加代理开关
+    new Setting(containerEl)
+        .setName("启用代理")
+        .setDesc("开启后，API请求将通过指定的代理服务器进行")
+        .addToggle(toggle => toggle
+            .setValue(this.plugin.settings.enableProxy)
+            .onChange(async (value) => {
+                this.plugin.settings.enableProxy = value;
+                await this.plugin.saveSettings();
+            }));
+
+    // 添加HTTP代理设置
+    new Setting(containerEl)
+        .setName("HTTP代理")
+        .setDesc("设置HTTP代理地址，格式：http://proxy.example.com:8080")
+        .addText(text => text
+            .setPlaceholder("http://proxy.example.com:8080")
+            .setValue(this.plugin.settings.httpProxy)
+            .onChange(async (value) => {
+                this.plugin.settings.httpProxy = value;
+                await this.plugin.saveSettings();
+            }));
+
+    // 添加HTTPS代理设置
+    new Setting(containerEl)
+        .setName("HTTPS代理")
+        .setDesc("设置HTTPS代理地址，格式：http://proxy.example.com:8080")
+        .addText(text => text
+            .setPlaceholder("http://proxy.example.com:8080")
+            .setValue(this.plugin.settings.httpsProxy)
+            .onChange(async (value) => {
+                this.plugin.settings.httpsProxy = value;
                 await this.plugin.saveSettings();
             }));
 }
