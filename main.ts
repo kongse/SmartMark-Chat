@@ -11,6 +11,8 @@ interface AIPluginSettings {
   httpProxy: string; // HTTP代理设置
   httpsProxy: string; // HTTPS代理设置
   enableProxy: boolean; // 启用代理开关
+  includeThoughts: boolean; // 是否显示思考过程
+  thinkingBudget: number; // 思考token限制
 }
 
 const DEFAULT_SETTINGS: AIPluginSettings = {
@@ -23,7 +25,9 @@ const DEFAULT_SETTINGS: AIPluginSettings = {
   enableTimestamp: true, // 默认开启时间戳
   httpProxy: "", // 默认无HTTP代理
   httpsProxy: "", // 默认无HTTPS代理
-  enableProxy: false // 默认关闭代理
+  enableProxy: false, // 默认关闭代理
+  includeThoughts: false, // 默认不显示思考过程
+  thinkingBudget: 0 // 默认思考token限制为0
 };
 
 // 主插件类
@@ -175,8 +179,8 @@ export default class AIPlugin extends Plugin {
             extra_body: {
               "google": {
                 "thinking_config": {
-                  "include_thoughts": true,
-                  "thinkingBudget": 0
+                  "include_thoughts": this.settings.includeThoughts,    //是否显示思考过程
+                  "thinkingBudget": this.settings.thinkingBudget       //思考token限制，改为0则不思考，注意openai api不支持很多特性 https://ai.google.dev/gemini-api/docs/openai?hl=zh-cn
                 }
               }
             }
@@ -661,6 +665,32 @@ class AISettingsTab extends PluginSettingTab {
             .setValue(this.plugin.settings.enableTimestamp)
             .onChange(async (value) => {
                 this.plugin.settings.enableTimestamp = value;
+                await this.plugin.saveSettings();
+            }));
+
+    // 添加思考功能设置分隔符
+    containerEl.createEl('h3', { text: '思考功能设置（仅支持Gemini模型）' });
+
+    // 添加显示思考过程设置
+    new Setting(containerEl)
+        .setName("显示思考过程")
+        .setDesc("开启后，AI会在回复中包含思考过程（仅Gemini模型支持）")
+        .addToggle(toggle => toggle
+            .setValue(this.plugin.settings.includeThoughts)
+            .onChange(async (value) => {
+                this.plugin.settings.includeThoughts = value;
+                await this.plugin.saveSettings();
+            }));
+
+    // 添加思考token限制设置
+    new Setting(containerEl)
+        .setName("思考Token限制")
+        .setDesc("设置AI思考过程的token数量限制，0表示不进行思考（仅Gemini模型支持）")
+        .addText(text => text
+            .setPlaceholder("0")
+            .setValue(String(this.plugin.settings.thinkingBudget))
+            .onChange(async (value) => {
+                this.plugin.settings.thinkingBudget = Number(value) || 0;
                 await this.plugin.saveSettings();
             }));
 
