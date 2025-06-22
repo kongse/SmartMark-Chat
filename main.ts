@@ -13,6 +13,7 @@ interface AIPluginSettings {
   enableProxy: boolean; // 启用代理开关
   includeThoughts: boolean; // 是否显示思考过程
   thinkingBudget: number; // 思考token限制
+  autoAddSeparator: boolean; // 自动添加= =分隔符
 }
 
 const DEFAULT_SETTINGS: AIPluginSettings = {
@@ -27,7 +28,8 @@ const DEFAULT_SETTINGS: AIPluginSettings = {
   httpsProxy: "", // 默认无HTTPS代理
   enableProxy: false, // 默认关闭代理
   includeThoughts: false, // 默认不显示思考过程
-  thinkingBudget: 0 // 默认思考token限制为0
+  thinkingBudget: 0, // 默认思考token限制为0
+  autoAddSeparator: true // 默认开启自动添加= =分隔符
 };
 
 // 主插件类
@@ -49,16 +51,23 @@ export default class AIPlugin extends Plugin {
       editorCallback: async (editor: Editor) => {
         try {
           const cursor = editor.getCursor();
-          const currentLine = editor.getLine(cursor.line);
+          let currentLineNum = cursor.line;
+          const currentLine = editor.getLine(currentLineNum);
       
           if (!this.settings.apiKey) {
             new Notice("⚠️ Please SETUP API Keys First！");
             return;
           }
       
+          // 自动添加= =分隔符（如果启用了该选项）
+          if (this.settings.autoAddSeparator) {
+            currentLineNum = this.autoAddSeparatorIfNeeded(editor, currentLineNum);
+          }
+          
           // 在当前行前面添加===（如果还没有的话）
-          if (!currentLine.startsWith('===')) {
-            editor.replaceRange("===", { line: cursor.line, ch: 0 });
+          const updatedCurrentLine = editor.getLine(currentLineNum);
+          if (!updatedCurrentLine.startsWith('===')) {
+            editor.replaceRange("===", { line: currentLineNum, ch: 0 });
           }
       
           // 直接调用AI，generateResponse中会自动调用getContextMessages()获取完整上下文
@@ -523,6 +532,31 @@ private async loadSettings() {
     await this.saveData(this.settings);
   }
 
+  // 自动添加= =分隔符的方法
+  private autoAddSeparatorIfNeeded(editor: Editor, currentLine: number): number {
+    // 检查当前行上面5行是否有= =符号
+    const startLine = Math.max(0, currentLine - 5);
+    let hasSeparator = false;
+    
+    for (let i = startLine; i < currentLine; i++) {
+      const lineContent = editor.getLine(i);
+      if (lineContent.trim() === '= =') {
+        hasSeparator = true;
+        break;
+      }
+    }
+    
+    // 如果没有找到= =符号，则在当前行前面插入一行
+    if (!hasSeparator) {
+      editor.replaceRange('= =\n', { line: currentLine, ch: 0 });
+      // 返回新的当前行号（因为插入了一行，原来的行号需要+1）
+      return currentLine + 1;
+    }
+    
+    // 如果已经有= =符号，返回原来的行号
+    return currentLine;
+  }
+
   // 格式化用户输入行
   // 格式化用户输入行
 private async formatSelectedText(editor: Editor): Promise<{ line: number, ch: number }> {
@@ -696,6 +730,20 @@ class AISettingsTab extends PluginSettingTab {
             .setValue(String(this.plugin.settings.thinkingBudget))
             .onChange(async (value) => {
                 this.plugin.settings.thinkingBudget = Number(value) || 0;
+                await this.plugin.saveSettings();
+            }));
+
+    // 添加聊天功能设置分隔符
+    containerEl.createEl('h3', { text: '聊天功能设置' });
+
+    // 添加自动添加= =分隔符设置
+    new Setting(containerEl)
+        .setName("Auto add '= =' mark when chat")
+        .setDesc("开启后，执行插件时会自动检查当前位置上方5行是否有= =符号，如果没有则自动插入")
+        .addToggle(toggle => toggle
+            .setValue(this.plugin.settings.autoAddSeparator)
+            .onChange(async (value) => {
+                this.plugin.settings.autoAddSeparator = value;
                 await this.plugin.saveSettings();
             }));
 
