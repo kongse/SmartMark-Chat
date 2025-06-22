@@ -464,9 +464,14 @@ private updateStreamingContent(newContent: string) {
         ch: this.streamInsertPosition.ch + this.lastContentLength
     };
     
+    // 处理思考标签：将<thought>替换为[thought]，</thought>替换为[/thought]
+    const processedContent = newContent
+        .replace(/<thought>/g, '[thought]')
+        .replace(/<\/thought>/g, '[/thought]');
+    
     // 只插入新增的内容
-    editor.replaceRange(newContent, currentPos);
-    this.lastContentLength += newContent.length;
+    editor.replaceRange(processedContent, currentPos);
+    this.lastContentLength += processedContent.length;
 }
 
 // 在流式输出结束后添加= =标记
