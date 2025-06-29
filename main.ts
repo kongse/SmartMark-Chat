@@ -174,7 +174,7 @@ export default class AIPlugin extends Plugin {
           ch: this.streamInsertPosition.ch + this.lastContentLength
         };
         const separatorLine = '='.repeat(this.settings.equalSeparatorCount);
-        editor.replaceRange(`\n[AI回复已中断]\n\n${separatorLine}\n\n`, endPos);
+        editor.replaceRange(`\n[AI回复已中断]\n\n${separatorLine}\n\n\n`, endPos);
       }
       
       this.isStreaming = false;
@@ -478,6 +478,13 @@ private updateStreamingContent(newContent: string) {
     // 只插入新增的内容
     editor.replaceRange(processedContent, currentPos);
     this.lastContentLength += processedContent.length;
+
+    // 将光标移动到新插入内容的末尾
+    const newCursorPos = {
+        line: this.streamInsertPosition.line,
+        ch: this.streamInsertPosition.ch + this.lastContentLength
+    };
+    editor.setCursor(newCursorPos);
 }
 
 // 在流式输出结束后添加=====标记
@@ -493,7 +500,7 @@ private finalizeStreamingContent() {
 
     // 按照新规范：AI回答下面的=====上下均空一行
     const separatorLine = '='.repeat(this.settings.equalSeparatorCount);
-    let finalContent = `\n\n${separatorLine}\n\n`;
+    let finalContent = `\n\n${separatorLine}\n\n\n`;
     
     // 如果启用了时间戳，添加emacs格式的时间戳
     if (this.settings.enableTimestamp) {
@@ -520,6 +527,14 @@ private finalizeStreamingContent() {
     }
 
     editor.replaceRange(finalContent, endPos);
+
+    // 获取当前光标位置并向下移动四行
+    const currentCursor = editor.getCursor();
+    const newCursorPos = {
+        line: currentCursor.line + 4,
+        ch: 0
+    };
+    editor.setCursor(newCursorPos);
 }
 
 // 加载设置
