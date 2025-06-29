@@ -14,6 +14,7 @@ interface AIPluginSettings {
   includeThoughts: boolean; // 是否显示思考过程
   thinkingBudget: number; // 思考token限制
   autoAddSeparator: boolean; // 自动添加= =分隔符
+  separatorCount: number; // 分隔符数量设置
 }
 
 const DEFAULT_SETTINGS: AIPluginSettings = {
@@ -29,13 +30,13 @@ const DEFAULT_SETTINGS: AIPluginSettings = {
   enableProxy: false, // 默认关闭代理
   includeThoughts: false, // 默认不显示思考过程
   thinkingBudget: 0, // 默认思考token限制为0
-  autoAddSeparator: true // 默认开启自动添加= =分隔符
+  autoAddSeparator: true, // 默认开启自动添加= =分隔符
+  separatorCount: 12 // 默认分隔符数量为12
 };
 
 // 主插件类
 export default class AIPlugin extends Plugin {
   settings: AIPluginSettings = DEFAULT_SETTINGS;
-  private addedSeparatorInCurrentSession = false; // 标记当前会话是否添加了= =分隔符
   private streamInsertPosition: { line: number, ch: number } | null = null;
   private lastContentLength = 0;
   private statusNotice: Notice | null = null; // 添加状态提示变量
@@ -60,22 +61,8 @@ export default class AIPlugin extends Plugin {
             return;
           }
       
-          // 重置标记
-          this.addedSeparatorInCurrentSession = false;
-          
-          // 自动添加= =分隔符（如果启用了该选项）
-          if (this.settings.autoAddSeparator) {
-            currentLineNum = this.autoAddSeparatorIfNeeded(editor, currentLineNum);
-          }
-          
-          // 在当前行前面添加===（如果还没有的话）
-          const updatedCurrentLine = editor.getLine(currentLineNum);
-          if (!updatedCurrentLine.startsWith('===')) {
-            editor.replaceRange("===", { line: currentLineNum, ch: 0 });
-          }
-      
-          // 直接调用AI，generateResponse中会自动调用getContextMessages()获取完整上下文
-          await this.callOpenAI(""); // 传空字符串，因为上下文已经在getContextMessages中处理了
+          // 按照新规范处理用户问题
+          await this.processUserQuestionAndCallAI(editor, currentLineNum);
       
         } catch (error) {
           new Notice(`CALL AI API ERROR: ${error}`);
@@ -123,6 +110,52 @@ export default class AIPlugin extends Plugin {
     }
   }
 
+  // 按照新SmartMark规范处理用户问题并调用AI
+  private async processUserQuestionAndCallAI(editor: Editor, currentLineNum: number): Promise<void> {
+    const currentLine = editor.getLine(currentLineNum);
+    
+    // 重置流式输出位置
+    this.streamInsertPosition = null;
+    this.lastContentLength = 0;
+    
+    // 用户问题范围判定
+    let userQuestionLines: string[] = [];
+    
+    if (currentLine.trim() !== '') {
+      // 如果当前行不是空行，只将当前行作为用户输入
+      userQuestionLines = [currentLine];
+    } else {
+      // 如果当前行是空行，向上搜索直到遇到分隔符或到达文件开头
+      for (let i = currentLineNum - 1; i >= 0; i--) {
+        const line = editor.getLine(i);
+        const trimmedLine = line.trim();
+        
+        // 检查是否遇到终止条件
+        if (trimmedLine.match(/^-{4,}$/) || trimmedLine.match(/^={4,}$/) || trimmedLine.match(/^x{4,}$/i)) {
+          break;
+        }
+        
+        userQuestionLines.unshift(line);
+      }
+    }
+    
+    // 在用户问题下面插入分隔符
+    const separatorLine = '-'.repeat(this.settings.separatorCount);
+    const insertPosition = { line: currentLineNum + 1, ch: 0 };
+    
+    // 插入格式：用户问题下一行是------，然后空一行
+    editor.replaceRange(`\n${separatorLine}\n`, insertPosition);
+    
+    // 设置AI回答的插入位置（在------下面空一行）
+    this.streamInsertPosition = { line: currentLineNum + 3, ch: 0 };
+    
+    // 将光标移动到AI回答应该开始的位置
+    editor.setCursor(this.streamInsertPosition);
+    
+    // 调用AI
+    await this.callOpenAI("");
+  }
+
   // 中断AI回复
   private interruptAI(): void {
     if (this.isStreaming && this.currentAbortController) {
@@ -137,7 +170,8 @@ export default class AIPlugin extends Plugin {
           line: this.streamInsertPosition.line,
           ch: this.streamInsertPosition.ch + this.lastContentLength
         };
-        editor.replaceRange('\n[AI回复已中断]\n= =', endPos);
+        const separatorLine = '='.repeat(this.settings.separatorCount);
+        editor.replaceRange(`\n[AI回复已中断]\n\n${separatorLine}\n\n`, endPos);
       }
       
       this.isStreaming = false;
@@ -355,77 +389,29 @@ export default class AIPlugin extends Plugin {
           const line = editor.getLine(i);
           const trimmedLine = line.trim();
           
-          // 检查终止条件：遇到=-=开头的行
-          if (trimmedLine.startsWith('=-=')) {
+          // 检查终止条件：遇到xxxxx（大于3个x）
+          if (trimmedLine.match(/^x{4,}$/i)) {
               // 终止收集循环
               break;
           }
           
-          // 检查用户输入标记（===）
-          if (line.includes('===')) {
-          // 如果===单独一行，表示多行输入开始
-          if (trimmedLine === '===') {
-          // 保存之前收集的内容（如果有）
-          this.saveCollectedContent(messages, collectingContent, collectingMode);
-          
-          // 开始收集多行用户输入
-          collectingContent = "";
-          collectingMode = 'user';
-          }
-          // 如果===在非空行开始，表示单行输入
-          else if (line.startsWith('===') && !line.endsWith('===')) {
-          // 保存之前收集的内容（如果有）
-          this.saveCollectedContent(messages, collectingContent, collectingMode);
-          
-          // 单行用户输入：直接收集===这一行作为用户输入
-          const userContent = line.substring(3).trim(); // 去掉===
-          messages.unshift({
-          role: 'user',
-          content: userContent
-          });
-          
-          // 重启收集循环
-          collectingContent = "";
-          collectingMode = 'none';
-          }
-          // 如果===在行尾，则不处理（忽略）
-          }
-          // 检查AI输入标记（= =）
-          else if (line.includes('= =')) {
-          // 如果= =单独一行，表示多行输入开始
-          if (trimmedLine === '= =') {
-          // 保存之前收集的内容（如果有）
-          this.saveCollectedContent(messages, collectingContent, collectingMode);
-          
-          // 开始收集多行AI输入
-          collectingContent = "";
-          collectingMode = 'assistant';
-          }
-          // 如果= =在非空行开始，表示单行输入
-          else if (line.startsWith('= =') && !line.endsWith('= =')) {
-          // 保存之前收集的内容（如果有）
-          this.saveCollectedContent(messages, collectingContent, collectingMode);
-          
-          // 单行AI输入：直接收集= =这一行作为AI输入
-          const aiContent = line.substring(3).trim(); // 去掉"= ="
-          messages.unshift({
-          role: 'assistant',
-          content: aiContent
-          });
-          
-          // 重启收集循环
-          collectingContent = "";
-          collectingMode = 'none';
-          }
-          // 如果= =在行尾，则不处理（忽略）
-          }
-          else if (line.startsWith('-----')) {
-              // 结束标记，保存收集的内容
+          // 检查AI回答结束标记（=====）
+          if (trimmedLine.match(/^={4,}$/)) {
+              // 保存之前收集的内容（如果有）
               this.saveCollectedContent(messages, collectingContent, collectingMode);
               
-              // 重启收集循环
+              // 开始收集AI回答（=====上面的内容是AI回答）
               collectingContent = "";
-              collectingMode = 'none';
+              collectingMode = 'assistant';
+          }
+          // 检查用户问题结束标记（-----）
+          else if (trimmedLine.match(/^-{4,}$/)) {
+              // 保存之前收集的内容（如果有）
+              this.saveCollectedContent(messages, collectingContent, collectingMode);
+              
+              // 开始收集用户问题（-----上面的内容是用户问题）
+          collectingContent = "";
+          collectingMode = 'user';
           }
           else if (collectingMode !== 'none') {
               // 在收集模式下，收集当前行内容
@@ -448,7 +434,7 @@ private updateStreamingContent(newContent: string) {
     const editor = this.app.workspace.activeEditor?.editor;
     if (!editor) return;
     
-    // 如果还没有设置插入位置，初始化插入位置
+    // 如果还没有设置插入位置，说明不是通过新规范调用的，使用旧的逻辑
     if (!this.streamInsertPosition) {
         const cursor = editor.getCursor();
         // 确保插入位置不会超出文档边界
@@ -464,11 +450,6 @@ private updateStreamingContent(newContent: string) {
         } else {
             this.streamInsertPosition = { line: cursor.line + 1, ch: 0 };
         }
-        
-        // 根据elegant mode设置插入不同格式的AI标记
-        const separator = this.settings.elegantMode ? "\n-----\n" : "-----\n";
-        editor.replaceRange(separator, this.streamInsertPosition);
-        this.streamInsertPosition.ch = separator.length;
     }
     
     // 计算当前应该插入的位置
@@ -487,7 +468,7 @@ private updateStreamingContent(newContent: string) {
     this.lastContentLength += processedContent.length;
 }
 
-// 在流式输出结束后添加= =标记
+// 在流式输出结束后添加=====标记
 private finalizeStreamingContent() {
     const editor = this.app.workspace.activeEditor?.editor;
     if (!editor || !this.streamInsertPosition) return;
@@ -498,7 +479,9 @@ private finalizeStreamingContent() {
         ch: this.streamInsertPosition.ch + this.lastContentLength
     };
 
-    let finalContent = '\n= =';
+    // 按照新规范：AI回答下面的=====上下均空一行
+    const separatorLine = '='.repeat(this.settings.separatorCount);
+    let finalContent = `\n\n${separatorLine}\n\n`;
     
     // 如果启用了时间戳，添加emacs格式的时间戳
     if (this.settings.enableTimestamp) {
@@ -521,12 +504,7 @@ private finalizeStreamingContent() {
         const timezone = `${offsetSign}${String(offsetHours).padStart(2, '0')}${String(offsetMinutes).padStart(2, '0')}`;
         
         const emacsTimestamp = `<!-- ${year}-${month}-${day} ${weekday} ${hour}:${minute}:${second} ${timezone} -->`;
-        finalContent += `\n${emacsTimestamp}`;
-    }
-    
-    // 如果在当前会话中添加了= =分隔符，则在最后添加\n-----\n
-    if (this.addedSeparatorInCurrentSession) {
-        finalContent += '\n===Continue...\n-----\n';
+        finalContent = finalContent.slice(0, -2) + `${emacsTimestamp}\n\n`; // 在最后的空行前插入时间戳
     }
 
     editor.replaceRange(finalContent, endPos);
@@ -541,31 +519,7 @@ private async loadSettings() {
     await this.saveData(this.settings);
   }
 
-  // 自动添加= =分隔符的方法
-  private autoAddSeparatorIfNeeded(editor: Editor, currentLine: number): number {
-    // 检查当前行上面5行是否有= =符号
-    const startLine = Math.max(0, currentLine - 5);
-    let hasSeparator = false;
-    
-    for (let i = startLine; i < currentLine; i++) {
-      const lineContent = editor.getLine(i);
-      if (lineContent.trim() === '= =') {
-        hasSeparator = true;
-        break;
-      }
-    }
-    
-    // 如果没有找到= =符号，则在当前行前面插入一行
-    if (!hasSeparator) {
-      editor.replaceRange('= =\n', { line: currentLine, ch: 0 });
-      this.addedSeparatorInCurrentSession = true; // 设置标记
-      // 返回新的当前行号（因为插入了一行，原来的行号需要+1）
-      return currentLine + 1;
-    }
-    
-    // 如果已经有= =符号，返回原来的行号
-    return currentLine;
-  }
+
 
   // 格式化用户输入行
   // 格式化用户输入行
@@ -745,6 +699,24 @@ class AISettingsTab extends PluginSettingTab {
 
     // 添加聊天功能设置分隔符
     containerEl.createEl('h3', { text: '聊天功能设置' });
+
+    // 添加分隔符数量设置
+    new Setting(containerEl)
+        .setName("分隔符数量")
+        .setDesc("设置-----和=====的数量（必须大于3，默认值是12）")
+        .addText(text => text
+            .setPlaceholder("12")
+            .setValue(String(this.plugin.settings.separatorCount))
+            .onChange(async (value) => {
+                const count = Number(value) || 12;
+                if (count > 3) {
+                    this.plugin.settings.separatorCount = count;
+                    await this.plugin.saveSettings();
+                } else {
+                    new Notice("分隔符数量必须大于3");
+                    text.setValue(String(this.plugin.settings.separatorCount));
+                }
+            }));
 
     // 添加自动添加= =分隔符设置
     new Setting(containerEl)
