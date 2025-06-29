@@ -35,6 +35,7 @@ const DEFAULT_SETTINGS: AIPluginSettings = {
 // 主插件类
 export default class AIPlugin extends Plugin {
   settings: AIPluginSettings = DEFAULT_SETTINGS;
+  private addedSeparatorInCurrentSession = false; // 标记当前会话是否添加了= =分隔符
   private streamInsertPosition: { line: number, ch: number } | null = null;
   private lastContentLength = 0;
   private statusNotice: Notice | null = null; // 添加状态提示变量
@@ -59,6 +60,9 @@ export default class AIPlugin extends Plugin {
             return;
           }
       
+          // 重置标记
+          this.addedSeparatorInCurrentSession = false;
+          
           // 自动添加= =分隔符（如果启用了该选项）
           if (this.settings.autoAddSeparator) {
             currentLineNum = this.autoAddSeparatorIfNeeded(editor, currentLineNum);
@@ -519,6 +523,11 @@ private finalizeStreamingContent() {
         const emacsTimestamp = `<!-- ${year}-${month}-${day} ${weekday} ${hour}:${minute}:${second} ${timezone} -->`;
         finalContent += `\n${emacsTimestamp}`;
     }
+    
+    // 如果在当前会话中添加了= =分隔符，则在最后添加\n-----\n
+    if (this.addedSeparatorInCurrentSession) {
+        finalContent += '\n===Continue...\n-----\n';
+    }
 
     editor.replaceRange(finalContent, endPos);
 }
@@ -549,6 +558,7 @@ private async loadSettings() {
     // 如果没有找到= =符号，则在当前行前面插入一行
     if (!hasSeparator) {
       editor.replaceRange('= =\n', { line: currentLine, ch: 0 });
+      this.addedSeparatorInCurrentSession = true; // 设置标记
       // 返回新的当前行号（因为插入了一行，原来的行号需要+1）
       return currentLine + 1;
     }
@@ -738,8 +748,8 @@ class AISettingsTab extends PluginSettingTab {
 
     // 添加自动添加= =分隔符设置
     new Setting(containerEl)
-        .setName("Auto add '= =' mark when chat")
-        .setDesc("开启后，执行插件时会自动检查当前位置上方5行是否有= =符号，如果没有则自动插入")
+        .setName("Auto add = = when chat")
+        .setDesc("开启后，执行插件时会自动检查当前位置上方5行是否有= =符号，如果没有则自动插入，并在AI回答结束后添加-----分隔符")
         .addToggle(toggle => toggle
             .setValue(this.plugin.settings.autoAddSeparator)
             .onChange(async (value) => {
