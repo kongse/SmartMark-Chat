@@ -6,14 +6,12 @@ interface AIPluginSettings {
   modelName: string;
   systemPrompt: string;
   contextLines: number;
-  elegantMode: boolean; // 添加elegant mode设置
   enableTimestamp: boolean; // 添加时间戳开关
   httpProxy: string; // HTTP代理设置
   httpsProxy: string; // HTTPS代理设置
   enableProxy: boolean; // 启用代理开关
   includeThoughts: boolean; // 是否显示思考过程
   thinkingBudget: number; // 思考token限制
-  autoAddSeparator: boolean; // 自动添加= =分隔符
   dashSeparatorCount: number; // -----分隔符数量设置
   equalSeparatorCount: number; // =====分隔符数量设置
 }
@@ -24,14 +22,12 @@ const DEFAULT_SETTINGS: AIPluginSettings = {
   modelName: "gpt-3.5-turbo",
   systemPrompt: "你是一个有帮助的AI助手",
   contextLines: 3,
-  elegantMode: true, // 默认关闭elegant mode
   enableTimestamp: true, // 默认开启时间戳
   httpProxy: "", // 默认无HTTP代理
   httpsProxy: "", // 默认无HTTPS代理
   enableProxy: false, // 默认关闭代理
   includeThoughts: false, // 默认不显示思考过程
   thinkingBudget: 0, // 默认思考token限制为0
-  autoAddSeparator: true, // 默认开启自动添加= =分隔符
   dashSeparatorCount: 85, // 默认-----分隔符数量为85
   equalSeparatorCount: 50 // 默认=====分隔符数量为50
 };
@@ -675,17 +671,6 @@ class AISettingsTab extends PluginSettingTab {
                     this.plugin.settings.contextLines = Number(value) || 0;
                     await this.plugin.saveSettings();
                 }));
-    
-    // 添加elegant mode设置
-    new Setting(containerEl)
-        .setName("Elegant Mode")
-        .setDesc("开启后，AI回复的分隔符前会添加额外的换行符，让格式更加优雅")
-        .addToggle(toggle => toggle
-            .setValue(this.plugin.settings.elegantMode)
-            .onChange(async (value) => {
-                this.plugin.settings.elegantMode = value;
-                await this.plugin.saveSettings();
-            }));
 
     // 添加时间戳设置
     new Setting(containerEl)
@@ -750,17 +735,6 @@ class AISettingsTab extends PluginSettingTab {
             .onChange(async (value) => {
                 const count = Number(value) || 50;
                 this.plugin.settings.equalSeparatorCount = count;
-                await this.plugin.saveSettings();
-            }));
-
-    // 添加自动添加= =分隔符设置
-    new Setting(containerEl)
-        .setName("Auto add = = when chat")
-        .setDesc("开启后，执行插件时会自动检查当前位置上方5行是否有= =符号，如果没有则自动插入，并在AI回答结束后添加-----分隔符")
-        .addToggle(toggle => toggle
-            .setValue(this.plugin.settings.autoAddSeparator)
-            .onChange(async (value) => {
-                this.plugin.settings.autoAddSeparator = value;
                 await this.plugin.saveSettings();
             }));
 
