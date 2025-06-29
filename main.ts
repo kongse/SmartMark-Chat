@@ -32,7 +32,7 @@ const DEFAULT_SETTINGS: AIPluginSettings = {
   includeThoughts: false, // 默认不显示思考过程
   thinkingBudget: 0, // 默认思考token限制为0
   autoAddSeparator: true, // 默认开启自动添加= =分隔符
-  dashSeparatorCount: 80, // 默认-----分隔符数量为80
+  dashSeparatorCount: 85, // 默认-----分隔符数量为85
   equalSeparatorCount: 50 // 默认=====分隔符数量为50
 };
 
@@ -714,12 +714,12 @@ class AISettingsTab extends PluginSettingTab {
     // 添加-----分隔符数量设置
     new Setting(containerEl)
         .setName("-----分隔符数量")
-        .setDesc("设置-----的数量（默认值是80）")
+        .setDesc("设置-----的数量（默认值是85）")
         .addText(text => text
-            .setPlaceholder("80")
+            .setPlaceholder("85")
             .setValue(String(this.plugin.settings.dashSeparatorCount))
             .onChange(async (value) => {
-                const count = Number(value) || 80;
+                const count = Number(value) || 85;
                 this.plugin.settings.dashSeparatorCount = count;
                 await this.plugin.saveSettings();
             }));
