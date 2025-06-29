@@ -141,15 +141,16 @@ export default class AIPlugin extends Plugin {
       }
     }
     
-    // 在用户问题下面插入分隔符
+    // 在用户问题行末尾插入分隔符
     const separatorLine = '-'.repeat(this.settings.dashSeparatorCount);
-    const insertPosition = { line: currentLineNum + 1, ch: 0 };
+    const currentLineContent = editor.getLine(currentLineNum);
+    const insertPosition = { line: currentLineNum, ch: currentLineContent.length };
     
-    // 插入格式：用户问题下一行是------，然后空一行
+    // 在用户问题行末尾插入换行符和分隔符
     editor.replaceRange(`\n${separatorLine}\n`, insertPosition);
     
-    // 设置AI回答的插入位置（在------下面空一行）
-    this.streamInsertPosition = { line: currentLineNum + 3, ch: 0 };
+    // 设置AI回答的插入位置（在------下面）
+    this.streamInsertPosition = { line: currentLineNum + 2, ch: 0 };
     
     // 将光标移动到AI回答应该开始的位置
     editor.setCursor(this.streamInsertPosition);
