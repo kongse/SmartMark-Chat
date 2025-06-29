@@ -712,19 +712,14 @@ class AISettingsTab extends PluginSettingTab {
     // 添加分隔符数量设置
     new Setting(containerEl)
         .setName("分隔符数量")
-        .setDesc("设置-----和=====的数量（必须大于3，默认值是12）")
+        .setDesc("设置-----和=====的数量（默认值是12）")
         .addText(text => text
             .setPlaceholder("12")
             .setValue(String(this.plugin.settings.separatorCount))
             .onChange(async (value) => {
                 const count = Number(value) || 12;
-                if (count > 3) {
-                    this.plugin.settings.separatorCount = count;
-                    await this.plugin.saveSettings();
-                } else {
-                    new Notice("分隔符数量必须大于3");
-                    text.setValue(String(this.plugin.settings.separatorCount));
-                }
+                this.plugin.settings.separatorCount = count;
+                await this.plugin.saveSettings();
             }));
 
     // 添加自动添加= =分隔符设置
