@@ -14,7 +14,8 @@ interface AIPluginSettings {
   includeThoughts: boolean; // 是否显示思考过程
   thinkingBudget: number; // 思考token限制
   autoAddSeparator: boolean; // 自动添加= =分隔符
-  separatorCount: number; // 分隔符数量设置
+  dashSeparatorCount: number; // -----分隔符数量设置
+  equalSeparatorCount: number; // =====分隔符数量设置
 }
 
 const DEFAULT_SETTINGS: AIPluginSettings = {
@@ -31,7 +32,8 @@ const DEFAULT_SETTINGS: AIPluginSettings = {
   includeThoughts: false, // 默认不显示思考过程
   thinkingBudget: 0, // 默认思考token限制为0
   autoAddSeparator: true, // 默认开启自动添加= =分隔符
-  separatorCount: 12 // 默认分隔符数量为12
+  dashSeparatorCount: 80, // 默认-----分隔符数量为80
+  equalSeparatorCount: 50 // 默认=====分隔符数量为50
 };
 
 // 主插件类
@@ -140,7 +142,7 @@ export default class AIPlugin extends Plugin {
     }
     
     // 在用户问题下面插入分隔符
-    const separatorLine = '-'.repeat(this.settings.separatorCount);
+    const separatorLine = '-'.repeat(this.settings.dashSeparatorCount);
     const insertPosition = { line: currentLineNum + 1, ch: 0 };
     
     // 插入格式：用户问题下一行是------，然后空一行
@@ -170,7 +172,7 @@ export default class AIPlugin extends Plugin {
           line: this.streamInsertPosition.line,
           ch: this.streamInsertPosition.ch + this.lastContentLength
         };
-        const separatorLine = '='.repeat(this.settings.separatorCount);
+        const separatorLine = '='.repeat(this.settings.equalSeparatorCount);
         editor.replaceRange(`\n[AI回复已中断]\n\n${separatorLine}\n\n`, endPos);
       }
       
@@ -489,7 +491,7 @@ private finalizeStreamingContent() {
     };
 
     // 按照新规范：AI回答下面的=====上下均空一行
-    const separatorLine = '='.repeat(this.settings.separatorCount);
+    const separatorLine = '='.repeat(this.settings.equalSeparatorCount);
     let finalContent = `\n\n${separatorLine}\n\n`;
     
     // 如果启用了时间戳，添加emacs格式的时间戳
@@ -709,16 +711,29 @@ class AISettingsTab extends PluginSettingTab {
     // 添加聊天功能设置分隔符
     containerEl.createEl('h3', { text: '聊天功能设置' });
 
-    // 添加分隔符数量设置
+    // 添加-----分隔符数量设置
     new Setting(containerEl)
-        .setName("分隔符数量")
-        .setDesc("设置-----和=====的数量（默认值是12）")
+        .setName("-----分隔符数量")
+        .setDesc("设置-----的数量（默认值是80）")
         .addText(text => text
-            .setPlaceholder("12")
-            .setValue(String(this.plugin.settings.separatorCount))
+            .setPlaceholder("80")
+            .setValue(String(this.plugin.settings.dashSeparatorCount))
             .onChange(async (value) => {
-                const count = Number(value) || 12;
-                this.plugin.settings.separatorCount = count;
+                const count = Number(value) || 80;
+                this.plugin.settings.dashSeparatorCount = count;
+                await this.plugin.saveSettings();
+            }));
+
+    // 添加=====分隔符数量设置
+    new Setting(containerEl)
+        .setName("=====分隔符数量")
+        .setDesc("设置=====的数量（默认值是50）")
+        .addText(text => text
+            .setPlaceholder("50")
+            .setValue(String(this.plugin.settings.equalSeparatorCount))
+            .onChange(async (value) => {
+                const count = Number(value) || 50;
+                this.plugin.settings.equalSeparatorCount = count;
                 await this.plugin.saveSettings();
             }));
 
