@@ -414,11 +414,14 @@ export default class AIPlugin extends Plugin {
           collectingMode = 'user';
           }
           else if (collectingMode !== 'none') {
-              // 在收集模式下，收集当前行内容
-              if (collectingContent) {
-                  collectingContent = line + '\n' + collectingContent;
-              } else {
-                  collectingContent = line;
+              // 在收集模式下，收集当前行内容（过滤HTML注释）
+              const filteredLine = this.filterHtmlComments(line);
+              if (filteredLine.trim()) { // 只收集非空行
+                  if (collectingContent) {
+                      collectingContent = filteredLine + '\n' + collectingContent;
+                  } else {
+                      collectingContent = filteredLine;
+                  }
               }
           }
       }
@@ -427,6 +430,12 @@ export default class AIPlugin extends Plugin {
       this.saveCollectedContent(messages, collectingContent, collectingMode);
       
       return messages;
+  }
+
+  // 过滤HTML注释的辅助方法
+  private filterHtmlComments(text: string): string {
+      // 移除HTML注释 <!-- ... -->
+      return text.replace(/<!--[\s\S]*?-->/g, '');
   }
 
 // Flowing Content Updater
